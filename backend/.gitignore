@@ -1,0 +1,4 @@
+requirements.txt
+venv
+.env
+vector_cache.pkl
