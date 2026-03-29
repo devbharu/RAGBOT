@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
 import 'katex/dist/katex.min.css';
 
 const API = 'http://127.0.0.1:8080';
@@ -135,9 +136,17 @@ const UploadPanel = ({ onUpload, uploading, uploadProgress, onClose, files, sele
    \[...\]  →  $$...$$   (block)
    \(...\)  →  $...$     (inline)
 ───────────────────────────────────────── */
-function normaliseMath(text) {
+function normaliseContent(text) {
+    // 1. LaTeX delimiters: \[...\] → $$...$$ and \(...\) → $...$
     text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_, i) => `\n$$${i}$$\n`);
     text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_, i) => `$${i}$`);
+
+    // 2. Strip duplicate inline expressions LLMs emit side-by-side e.g. x^{2}x^{2}
+    text = text.replace(/(\$[^$\n]+?\$)\s*\1/g, '$1');
+
+    // 3. Replace <br> tags inside table cells with a separator dot
+    text = text.replace(/<br\s*\/?>/gi, ' · ');
+
     return text;
 }
 
@@ -147,7 +156,7 @@ function normaliseMath(text) {
 const MarkdownMessage = ({ content }) => (
     <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
+        rehypePlugins={[rehypeRaw, [rehypeKatex, { strict: false, throwOnError: false }]]}
         components={{
             div: ({ className, children, ...props }) => {
                 if (className?.includes('math-display')) return (
@@ -189,7 +198,7 @@ const MarkdownMessage = ({ content }) => (
             blockquote: ({ ...props }) => <blockquote className="border-l-4 border-blue-500 pl-4 my-2 text-gray-400 italic" {...props} />,
         }}
     >
-        {normaliseMath(content)}
+        {normaliseContent(content)}
     </ReactMarkdown>
 );
 

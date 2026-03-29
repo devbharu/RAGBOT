@@ -4,3 +4,5 @@ venv
 chroma_db
 rag_docs
 uploads
+__pycache__
+docling_loader.cpython-312.pyc
