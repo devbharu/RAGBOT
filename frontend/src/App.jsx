@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Chatbot from './components/Chatbot'
+import Header from './components/Header'
 
 
 
@@ -9,7 +10,7 @@ function App() {
   return (
     <>
       <div className='bg-blue-200'>
-
+        {/* <Header /> */}
         <Chatbot />
 
       </div>

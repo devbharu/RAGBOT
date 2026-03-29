@@ -1,4 +1,6 @@
 requirements.txt
 venv
 .env
-vector_cache.pkl
+chroma_db
+rag_docs
+uploads

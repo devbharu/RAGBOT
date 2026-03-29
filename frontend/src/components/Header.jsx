@@ -31,12 +31,7 @@ const Header = () => {
                         </button>
 
                         {/* Clear Chat Button */}
-                        <button
-                            className="p-2 text-gray-400 hover:text-white hover:bg-[#2a2a2a] rounded-lg transition-all duration-200"
-                            title="Clear chat"
-                        >
-                            <Trash2 size={20} />
-                        </button>
+
 
                         {/* Theme Toggle */}
                         <button
@@ -47,33 +42,13 @@ const Header = () => {
                             {isDark ? <Sun size={20} /> : <Moon size={20} />}
                         </button>
 
-                        {/* Settings */}
-                        <button
-                            className="p-2 text-gray-400 hover:text-white hover:bg-[#2a2a2a] rounded-lg transition-all duration-200"
-                            title="Settings"
-                        >
-                            <Settings size={20} />
-                        </button>
 
-                        {/* Mobile Menu Toggle */}
-                        <button
-                            onClick={() => setShowMenu(!showMenu)}
-                            className="md:hidden p-2 text-gray-400 hover:text-white hover:bg-[#2a2a2a] rounded-lg transition-all duration-200"
-                        >
-                            {showMenu ? <X size={20} /> : <Menu size={20} />}
-                        </button>
+
+
                     </div>
                 </div>
 
-                {/* Mobile Menu */}
-                {showMenu && (
-                    <div className="md:hidden border-t border-[#2a2a2a] py-3">
-                        <button className="w-full flex items-center gap-3 px-4 py-3 text-white hover:bg-[#2a2a2a] rounded-lg transition-all duration-200">
-                            <MessageSquare size={18} />
-                            <span className="text-sm font-medium">New Chat</span>
-                        </button>
-                    </div>
-                )}
+
             </div>
         </header>
     );
