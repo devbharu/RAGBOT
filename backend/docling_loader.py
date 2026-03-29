@@ -754,7 +754,7 @@ async def load_single_file_async(filepath: str, filename: str) -> list[dict]:
     ext = os.path.splitext(filename)[1].lower()
 
     if ext == ".pdf":
-        ollama_up   = await _ollama_available()
+        ollama_up = False if os.getenv("SKIP_VLM", "false").lower() == "true" else await _ollama_available()
         print(f"[LOADER] Ollama: "
               f"{'UP  → ' + VLM_MODEL if ollama_up else 'DOWN → images skipped'}")
         file_chunks = await _process_pdf(filepath, ollama_up)

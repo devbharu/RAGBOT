@@ -1,0 +1,11 @@
+flask
+flask-cors
+python-dotenv
+sentence-transformers
+pymupdf
+pymupdf4llm
+chromadb
+httpx
+pillow
+requests
+rank-bm25
