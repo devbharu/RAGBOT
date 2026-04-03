@@ -9,3 +9,7 @@ httpx
 pillow
 requests
 rank-bm25
+langchain-core
+langchain-ollama
+langgraph
+langchain-community
