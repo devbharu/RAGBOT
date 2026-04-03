@@ -1,103 +1,148 @@
 /**
- * ReportPanel.jsx
- * ─────────────────────────────────────────────────────────────
- * Drop-in panel for the RAG frontend.
- * Calls POST /generate-report, shows markdown preview + raw LaTeX.
- * Claude-agent style: streaming status updates while generating.
- *
- * Props:
- *   filename   string   — currently selected file
- *   apiBase    string   — backend base URL, e.g. "http://localhost:8080"
- *
- * Usage in Chatbot.jsx or App.jsx:
- *   import ReportPanel from "./ReportPanel";
- *   <ReportPanel filename={selectedFile} apiBase="http://localhost:8080" />
+ * ReportPanel.jsx — Redesigned
+ * Aesthetic: dark editorial / research terminal
+ * Font: DM Mono for UI, Fraunces for headings
+ * All original functionality preserved + improved UX
  */
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, useId } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 
-// ── default sections (mirrors report_graph.py DEFAULT_SECTIONS) ──
-const DEFAULT_SECTIONS = [
-    "Abstract & Overview",
-    "Key Concepts & Definitions",
-    "Methodology & Approach",
-    "Results & Findings",
-    "Discussion & Analysis",
-    "Conclusion & Future Work",
-];
-
-// ── agent steps shown while generating ──
+// ── constants ──────────────────────────────────────────────────
 const AGENT_STEPS = [
-    { key: "retrieve", label: "Retrieving document chunks…" },
-    { key: "fanout", label: "Spawning parallel section writers…" },
-    { key: "write", label: "Writing sections concurrently…" },
-    { key: "reduce", label: "Stitching sections together…" },
-    { key: "refine", label: "Coherence pass — smoothing transitions…" },
-    { key: "latex", label: "Rendering LaTeX output…" },
-    { key: "done", label: "Report ready" },
+    { key: "fetch", icon: "◈", label: "Fetching all chunks from vector DB" },
+    { key: "structure", icon: "⬡", label: "Discovering PDF structure & sections" },
+    { key: "fanout", icon: "⟁", label: "Spawning parallel section writers" },
+    { key: "write", icon: "▦", label: "Writing sections concurrently" },
+    { key: "reduce", icon: "⊟", label: "Stitching sections in order" },
+    { key: "latex", icon: "∴", label: "Rendering LaTeX output" },
+    { key: "done", icon: "✦", label: "Report ready" },
 ];
 
-export default function ReportPanel({ filename, apiBase = "http://localhost:8080" }) {
-    const [tab, setTab] = useState("markdown");   // "markdown" | "latex" | "config"
-    const [report, setReport] = useState(null);         // {markdown, latex, sections}
+const MAX_CUSTOM_SECTIONS = 15;
+const MIN_CUSTOM_SECTIONS = 1;
+const STEP_INTERVAL = 8000;
+const MAX_RETRIES = 2;
+const SESSION_HINT_KEY = "rp_query_hint";
+
+// ── helpers ────────────────────────────────────────────────────
+const wordCount = (t = "") => t.trim().split(/\s+/).filter(Boolean).length;
+const readTime = (w) => `${Math.max(1, Math.round(w / 200))} min`;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const cleanName = (s = "") => s.replace(/_pdf$/i, "").replace(/\.pdf$/i, "").replace(/_/g, " ").trim();
+
+// ── component ──────────────────────────────────────────────────
+export default function ReportPanel({ filename, apiBase = "http://localhost:8080", onReportReady }) {
+    const uid = useId();
+
+    const [tab, setTab] = useState("preview");
+    const [report, setReport] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [stepIdx, setStepIdx] = useState(0);
-    const [queryHint, setQueryHint] = useState("");
-    const [sections, setSections] = useState(DEFAULT_SECTIONS);
     const [copied, setCopied] = useState(false);
-    const stepTimer = useRef(null);
-    const latexRef = useRef(null);
+    const [staleWarning, setStaleWarning] = useState(false);
+    const [useCustomSections, setUseCustomSections] = useState(false);
+    const [customSections, setCustomSections] = useState([""]);
+    const [queryHint, setQueryHint] = useState(() => {
+        try { return sessionStorage.getItem(SESSION_HINT_KEY) || ""; } catch { return ""; }
+    });
 
-    // Advance agent step ticker while loading
+    const stepTimer = useRef(null);
+    const abortRef = useRef(null);
+    const prevFile = useRef(filename);
+
+    const persistHint = (v) => {
+        setQueryHint(v);
+        try { sessionStorage.setItem(SESSION_HINT_KEY, v); } catch { }
+    };
+
+    // stale warning
+    useEffect(() => {
+        if (report && filename !== prevFile.current) setStaleWarning(true);
+        prevFile.current = filename;
+    }, [filename, report]);
+
+    // step ticker
     useEffect(() => {
         if (loading) {
             setStepIdx(0);
-            stepTimer.current = setInterval(() => {
-                setStepIdx(i => Math.min(i + 1, AGENT_STEPS.length - 2));
-            }, 4500);
+            stepTimer.current = setInterval(
+                () => setStepIdx(i => Math.min(i + 1, AGENT_STEPS.length - 2)),
+                STEP_INTERVAL,
+            );
         } else {
             clearInterval(stepTimer.current);
-            setStepIdx(AGENT_STEPS.length - 1); // "done"
+            if (!error) setStepIdx(AGENT_STEPS.length - 1);
         }
         return () => clearInterval(stepTimer.current);
-    }, [loading]);
+    }, [loading, error]);
 
-    const generate = async () => {
-        if (!filename) return;
-        setLoading(true);
-        setError("");
-        setReport(null);
-        setCopied(false);
+    // generate
+    const generate = useCallback(async () => {
+        if (!filename || loading) return;
+        abortRef.current?.abort();
+        const ctrl = new AbortController();
+        abortRef.current = ctrl;
 
-        try {
-            const res = await fetch(`${apiBase}/generate-report`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    filename,
-                    query_hint: queryHint.trim(),
-                    sections: sections.filter(s => s.trim()),
-                    format: "both",
-                }),
-            });
+        setLoading(true); setError(""); setReport(null);
+        setCopied(false); setStaleWarning(false);
 
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.error || `HTTP ${res.status}`);
+        const validCustom = customSections.map(s => s.trim()).filter(Boolean);
+        const sectionsPayload = (useCustomSections && validCustom.length > 0) ? validCustom : [];
+
+        let attempt = 0;
+        while (attempt <= MAX_RETRIES) {
+            try {
+                if (attempt > 0) await sleep(600 * 2 ** attempt);
+                const res = await fetch(`${apiBase}/generate-report`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    signal: ctrl.signal,
+                    body: JSON.stringify({
+                        filename,
+                        query_hint: queryHint.trim(),
+                        sections: sectionsPayload,
+                        format: "both",
+                    }),
+                });
+                if (!res.ok) {
+                    const retryable = res.status === 429 || res.status >= 500;
+                    if (retryable && attempt < MAX_RETRIES) { attempt++; continue; }
+                    const e = await res.json().catch(() => ({}));
+                    throw new Error(e.error || `Server error ${res.status}`);
+                }
+                const data = await res.json();
+                setReport(data);
+                setTab("preview");
+                onReportReady?.(data);
+                break;
+            } catch (e) {
+                if (e.name === "AbortError") { setError("Cancelled."); break; }
+                if (attempt >= MAX_RETRIES) {
+                    setError(e instanceof TypeError ? "Network error — check connection." : e.message || "Unexpected error.");
+                    break;
+                }
+                attempt++;
             }
-
-            const data = await res.json();
-            setReport(data);
-            setTab("markdown");
-        } catch (e) {
-            setError(e.message);
-        } finally {
-            setLoading(false);
         }
+        setLoading(false);
+    }, [filename, loading, queryHint, customSections, useCustomSections, apiBase, onReportReady]);
+
+    const cancel = () => abortRef.current?.abort();
+
+    // downloads
+    const download = (content, ext, mime) => {
+        const blob = new Blob([content], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const a = Object.assign(document.createElement("a"), {
+            href: url,
+            download: cleanName(filename) + "_report." + ext,
+        });
+        a.click();
+        URL.revokeObjectURL(url);
     };
 
     const copyLatex = () => {
@@ -108,364 +153,699 @@ export default function ReportPanel({ filename, apiBase = "http://localhost:8080
         });
     };
 
-    const downloadLatex = () => {
-        if (!report?.latex) return;
-        const blob = new Blob([report.latex], { type: "text/plain" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename.replace(/\.pdf$/i, "") + "_report.tex";
-        a.click();
-        URL.revokeObjectURL(url);
+    const printPdf = () => {
+        if (!report?.markdown) return;
+        const html = mdToHtml(report.markdown);
+        const doc = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>${cleanName(filename)}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
+  body{font-family:'Lora',Georgia,serif;max-width:680px;margin:48px auto;font-size:13.5px;line-height:1.85;color:#1a1a1a}
+  h1{font-size:24px;font-weight:600;margin:0 0 24px;letter-spacing:-.02em}
+  h2{font-size:17px;font-weight:600;margin:28px 0 10px;border-bottom:1px solid #ddd;padding-bottom:6px}
+  h3{font-size:14px;font-weight:600;margin:20px 0 8px}
+  code{font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:#f4f4f4;padding:1px 5px;border-radius:3px}
+  pre{background:#f4f4f4;padding:14px;border-radius:4px;overflow-x:auto}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:12.5px}
+  th,td{border:1px solid #ddd;padding:7px 10px}th{background:#f7f7f7;font-weight:600}
+  @media print{body{margin:0}}
+</style></head><body>${html}</body></html>`;
+        const iframe = document.createElement("iframe");
+        iframe.style.display = "none";
+        document.body.appendChild(iframe);
+        iframe.contentDocument.write(doc);
+        iframe.contentDocument.close();
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        setTimeout(() => document.body.removeChild(iframe), 3000);
     };
 
-    const addSection = () => setSections(s => [...s, ""]);
-    const updateSection = (i, val) => setSections(s => s.map((v, idx) => idx === i ? val : v));
-    const removeSection = (i) => setSections(s => s.filter((_, idx) => idx !== i));
-    const resetSections = () => setSections(DEFAULT_SECTIONS);
+    // custom sections helpers
+    const addCustom = () => customSections.length < MAX_CUSTOM_SECTIONS && setCustomSections(s => [...s, ""]);
+    const updateCustom = (i, v) => setCustomSections(s => s.map((x, j) => j === i ? v : x));
+    const removeCustom = (i) => customSections.length > MIN_CUSTOM_SECTIONS && setCustomSections(s => s.filter((_, j) => j !== i));
 
-    // ── styles ────────────────────────────────────────────────────
-    const s = {
-        root: {
-            fontFamily: "var(--font-sans)",
-            color: "var(--color-text-primary)",
-            padding: "0",
-        },
-        header: {
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: "16px",
-        },
-        title: {
-            fontSize: "15px",
-            fontWeight: "500",
-            margin: "0",
-        },
-        fileChip: {
-            fontSize: "12px",
-            color: "var(--color-text-secondary)",
-            background: "var(--color-background-secondary)",
-            border: "0.5px solid var(--color-border-tertiary)",
-            borderRadius: "var(--border-radius-md)",
-            padding: "3px 10px",
-            maxWidth: "200px",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-        },
-        hintRow: {
-            display: "flex",
-            gap: "8px",
-            marginBottom: "12px",
-        },
-        hintInput: {
-            flex: "1",
-            fontSize: "13px",
-        },
-        genBtn: {
-            padding: "0 20px",
-            height: "36px",
-            fontSize: "13px",
-            fontWeight: "500",
-            cursor: loading || !filename ? "not-allowed" : "pointer",
-            opacity: loading || !filename ? "0.5" : "1",
-            whiteSpace: "nowrap",
-            flexShrink: "0",
-        },
-        tabs: {
-            display: "flex",
-            gap: "0",
-            borderBottom: "0.5px solid var(--color-border-tertiary)",
-            marginBottom: "16px",
-        },
-        tab: (active) => ({
-            padding: "8px 16px",
-            fontSize: "13px",
-            fontWeight: active ? "500" : "400",
-            color: active ? "var(--color-text-primary)" : "var(--color-text-secondary)",
-            borderBottom: active ? "1.5px solid var(--color-text-primary)" : "1.5px solid transparent",
-            cursor: "pointer",
-            background: "none",
-            border: "none",
-            borderBottomWidth: "1.5px",
-            borderBottomStyle: "solid",
-            borderBottomColor: active ? "var(--color-text-primary)" : "transparent",
-            marginBottom: "-0.5px",
-        }),
-        agentBox: {
-            background: "var(--color-background-secondary)",
-            border: "0.5px solid var(--color-border-tertiary)",
-            borderRadius: "var(--border-radius-lg)",
-            padding: "20px 24px",
-            marginBottom: "16px",
-        },
-        stepRow: (active, done) => ({
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            padding: "6px 0",
-            opacity: done ? "0.45" : active ? "1" : "0.3",
-            transition: "opacity 0.3s",
-        }),
-        dot: (active, done) => ({
-            width: "8px",
-            height: "8px",
-            borderRadius: "50%",
-            flexShrink: "0",
-            background: done
-                ? "var(--color-text-secondary)"
-                : active
-                    ? "var(--color-text-primary)"
-                    : "var(--color-border-tertiary)",
-            transition: "background 0.3s",
-        }),
-        stepLabel: {
-            fontSize: "13px",
-        },
-        spinner: {
-            width: "14px",
-            height: "14px",
-            border: "1.5px solid var(--color-border-tertiary)",
-            borderTop: "1.5px solid var(--color-text-primary)",
-            borderRadius: "50%",
-            animation: "spin 0.8s linear infinite",
-            flexShrink: "0",
-        },
-        latexToolbar: {
-            display: "flex",
-            gap: "8px",
-            justifyContent: "flex-end",
-            marginBottom: "8px",
-        },
-        codeBlock: {
-            fontFamily: "var(--font-mono)",
-            fontSize: "12px",
-            lineHeight: "1.6",
-            background: "var(--color-background-secondary)",
-            border: "0.5px solid var(--color-border-tertiary)",
-            borderRadius: "var(--border-radius-md)",
-            padding: "16px",
-            overflowX: "auto",
-            whiteSpace: "pre",
-            maxHeight: "60vh",
-            overflowY: "auto",
-        },
-        sectionList: {
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-            marginBottom: "12px",
-        },
-        sectionRow: {
-            display: "flex",
-            gap: "8px",
-            alignItems: "center",
-        },
-        removeBtn: {
-            flexShrink: "0",
-            padding: "0 10px",
-            height: "36px",
-            fontSize: "13px",
-            color: "var(--color-text-secondary)",
-            cursor: "pointer",
-        },
-        addBtn: {
-            fontSize: "13px",
-            padding: "6px 14px",
-        },
-        resetBtn: {
-            fontSize: "13px",
-            padding: "6px 14px",
-            color: "var(--color-text-secondary)",
-        },
-        configRow: {
-            display: "flex",
-            gap: "8px",
-            justifyContent: "flex-start",
-            marginTop: "4px",
-        },
-        errorBox: {
-            background: "var(--color-background-danger)",
-            color: "var(--color-text-danger)",
-            border: "0.5px solid var(--color-border-danger)",
-            borderRadius: "var(--border-radius-md)",
-            padding: "10px 14px",
-            fontSize: "13px",
-            marginBottom: "12px",
-        },
-        markdownWrap: {
-            fontSize: "14px",
-            lineHeight: "1.7",
-            maxHeight: "65vh",
-            overflowY: "auto",
-            paddingRight: "4px",
-        },
-        sectionChips: {
-            display: "flex",
-            gap: "6px",
-            flexWrap: "wrap",
-            marginBottom: "12px",
-        },
-        chip: {
-            fontSize: "12px",
-            padding: "3px 10px",
-            borderRadius: "var(--border-radius-md)",
-            border: "0.5px solid var(--color-border-tertiary)",
-            background: "var(--color-background-secondary)",
-            color: "var(--color-text-secondary)",
-        },
-    };
+    const wc = report?.markdown ? wordCount(report.markdown) : 0;
+    const discoveredSections = report?.sections?.filter(s => s?.name) || [];
 
+    const TABS = [
+        { key: "preview", label: "Preview" },
+        { key: "latex", label: "LaTeX" },
+        ...(discoveredSections.length > 0 ? [{ key: "sections", label: `Sections·${discoveredSections.length}` }] : []),
+        { key: "config", label: "Config" },
+    ];
+
+    // ── render ─────────────────────────────────────────────────
     return (
-        <div style={s.root}>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }
-        .rp-md h1{font-size:18px;font-weight:500;margin:1.2rem 0 0.5rem}
-        .rp-md h2{font-size:16px;font-weight:500;margin:1rem 0 0.4rem;border-bottom:0.5px solid var(--color-border-tertiary);padding-bottom:4px}
-        .rp-md h3{font-size:14px;font-weight:500;margin:0.8rem 0 0.3rem}
-        .rp-md p{margin:0.5rem 0}
-        .rp-md ul,ol{padding-left:1.4rem;margin:0.5rem 0}
-        .rp-md li{margin:0.2rem 0}
-        .rp-md code{font-family:var(--font-mono);font-size:12px;background:var(--color-background-secondary);padding:1px 5px;border-radius:4px}
-        .rp-md pre{background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px;overflow-x:auto}
-        .rp-md pre code{background:none;padding:0}
-        .rp-md table{border-collapse:collapse;width:100%;font-size:13px;margin:0.8rem 0}
-        .rp-md th,td{border:0.5px solid var(--color-border-tertiary);padding:6px 10px;text-align:left}
-        .rp-md th{background:var(--color-background-secondary);font-weight:500}
-        .rp-md blockquote{border-left:2px solid var(--color-border-secondary);padding-left:12px;color:var(--color-text-secondary);margin:0.6rem 0}
-      `}</style>
+        <>
+            {/* Google Fonts */}
+            <link rel="preconnect" href="https://fonts.googleapis.com" />
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+            <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;1,9..144,300&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
 
-            {/* ── Header ─────────────────────────────────────────── */}
-            <div style={s.header}>
-                <p style={s.title}>Report generator</p>
-                {filename && <span style={s.fileChip}>{filename}</span>}
-            </div>
+            <div style={$.root}>
+                <style>{CSS}</style>
 
-            {/* ── Query hint + generate button ─────────────────── */}
-            <div style={s.hintRow}>
-                <input
-                    type="text"
-                    placeholder="Report focus or topic (optional)"
-                    value={queryHint}
-                    onChange={e => setQueryHint(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && !loading && filename && generate()}
-                    style={s.hintInput}
-                    disabled={loading}
-                />
-                <button
-                    onClick={generate}
-                    disabled={loading || !filename}
-                    style={s.genBtn}
-                >
-                    {loading ? "Generating…" : "Generate report"}
-                </button>
-            </div>
-
-            {/* ── Error ────────────────────────────────────────── */}
-            {error && <div style={s.errorBox}>{error}</div>}
-
-            {/* ── Agent step ticker ────────────────────────────── */}
-            {loading && (
-                <div style={s.agentBox}>
-                    {AGENT_STEPS.slice(0, -1).map((step, i) => {
-                        const active = i === stepIdx;
-                        const done = i < stepIdx;
-                        return (
-                            <div key={step.key} style={s.stepRow(active, done)}>
-                                {active
-                                    ? <div style={s.spinner} />
-                                    : <div style={s.dot(active, done)} />
-                                }
-                                <span style={s.stepLabel}>{step.label}</span>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-
-            {/* ── Tabs ─────────────────────────────────────────── */}
-            {(report || !loading) && (
-                <div style={s.tabs}>
-                    <button style={s.tab(tab === "markdown")} onClick={() => setTab("markdown")}>
-                        Preview
-                    </button>
-                    <button style={s.tab(tab === "latex")} onClick={() => setTab("latex")}>
-                        LaTeX
-                    </button>
-                    <button style={s.tab(tab === "config")} onClick={() => setTab("config")}>
-                        Sections
-                    </button>
-                </div>
-            )}
-
-            {/* ── Markdown preview ─────────────────────────────── */}
-            {tab === "markdown" && report && (
-                <div style={s.markdownWrap} className="rp-md">
-                    <ReactMarkdown
-                        remarkPlugins={[remarkMath]}
-                        rehypePlugins={[rehypeKatex]}
-                    >
-                        {report.markdown}
-                    </ReactMarkdown>
-                </div>
-            )}
-
-            {/* ── LaTeX view ───────────────────────────────────── */}
-            {tab === "latex" && report && (
-                <>
-                    <div style={s.latexToolbar}>
-                        <button onClick={copyLatex} style={{ fontSize: "13px", padding: "6px 14px" }}>
-                            {copied ? "Copied" : "Copy LaTeX"}
-                        </button>
-                        <button onClick={downloadLatex} style={{ fontSize: "13px", padding: "6px 14px" }}>
-                            Download .tex
-                        </button>
+                {/* ── Top bar ─────────────────────────────────────── */}
+                <div style={$.topbar}>
+                    <div style={$.brand}>
+                        <span style={$.brandIcon}>◈</span>
+                        <span style={$.brandText}>Report Engine</span>
                     </div>
-                    <pre style={s.codeBlock} ref={latexRef}>
-                        {report.latex}
-                    </pre>
-                </>
-            )}
+                    {filename && (
+                        <div style={$.fileTag} title={filename}>
+                            <span style={$.fileTagDot} />
+                            {cleanName(filename)}
+                        </div>
+                    )}
+                </div>
 
-            {/* ── Config: section editor ───────────────────────── */}
-            {tab === "config" && (
-                <>
-                    <div style={s.sectionList}>
-                        {sections.map((sec, i) => (
-                            <div key={i} style={s.sectionRow}>
-                                <input
-                                    type="text"
-                                    value={sec}
-                                    onChange={e => updateSection(i, e.target.value)}
-                                    placeholder={`Section ${i + 1}`}
-                                    style={{ flex: 1, fontSize: "13px" }}
-                                />
-                                <button
-                                    onClick={() => removeSection(i)}
-                                    style={s.removeBtn}
-                                    disabled={sections.length <= 1}
-                                >
-                                    ×
-                                </button>
-                            </div>
+                {/* ── Stale warning ─────────────────────────────── */}
+                {staleWarning && (
+                    <div style={$.stale} role="alert">
+                        <span style={$.staleIcon}>⚠</span>
+                        File changed — re-generate to refresh.
+                    </div>
+                )}
+
+                {/* ── Input area ──────────────────────────────────── */}
+                <div style={$.inputBlock}>
+                    <label style={$.inputLabel}>Focus / topic <span style={$.labelNote}>(optional)</span></label>
+                    <div style={$.inputRow}>
+                        <input
+                            className="rp-input"
+                            type="text"
+                            placeholder="e.g. explain each chapter in detail…"
+                            value={queryHint}
+                            onChange={e => persistHint(e.target.value)}
+                            onKeyDown={e => e.key === "Enter" && !loading && filename && generate()}
+                            disabled={loading}
+                            aria-label="Report focus hint"
+                        />
+                    </div>
+
+                    <label className="rp-toggle">
+                        <input
+                            type="checkbox"
+                            checked={useCustomSections}
+                            onChange={e => setUseCustomSections(e.target.checked)}
+                            disabled={loading}
+                        />
+                        <span className="rp-toggle-track" />
+                        <span style={{ fontSize: 12, color: "var(--rp-muted)", userSelect: "none" }}>
+                            Use custom section names
+                        </span>
+                    </label>
+                </div>
+
+                {/* ── Action row ──────────────────────────────────── */}
+                <div style={$.actionRow}>
+                    <button
+                        className="rp-btn-primary"
+                        onClick={generate}
+                        disabled={loading || !filename}
+                        aria-busy={loading}
+                    >
+                        {loading
+                            ? <><span className="rp-spinner" /> Generating…</>
+                            : <><span style={{ marginRight: 6 }}>✦</span> Generate report</>
+                        }
+                    </button>
+
+                    {loading && (
+                        <button className="rp-btn-ghost" onClick={cancel}>Cancel</button>
+                    )}
+
+                    {report && !loading && (
+                        <div style={$.dlGroup}>
+                            <button className="rp-btn-ghost" onClick={() => download(report.markdown, "md", "text/markdown")}>↓ .md</button>
+                            <button className="rp-btn-ghost" onClick={() => download(report.latex, "tex", "text/plain")}>↓ .tex</button>
+                            <button className="rp-btn-ghost" onClick={printPdf}>⎙ Print</button>
+                        </div>
+                    )}
+                </div>
+
+                {/* ── Error ───────────────────────────────────────── */}
+                {error && (
+                    <div style={$.errorBox} role="alert">
+                        <span style={$.errorIcon}>✗</span>
+                        {error}
+                        {!error.includes("Cancelled") && (
+                            <button className="rp-link" onClick={generate}>Retry</button>
+                        )}
+                    </div>
+                )}
+
+                {/* ── Progress ticker ─────────────────────────────── */}
+                {loading && (
+                    <div style={$.progressBox} role="status" aria-live="polite">
+                        <div style={$.progressHeader}>
+                            <span style={$.progressTitle}>Processing</span>
+                            <span style={$.progressSub}>{AGENT_STEPS[stepIdx]?.label}</span>
+                        </div>
+                        <div style={$.stepGrid}>
+                            {AGENT_STEPS.slice(0, -1).map((step, i) => {
+                                const active = i === stepIdx;
+                                const done = i < stepIdx;
+                                return (
+                                    <div key={step.key} className={`rp-step ${active ? "active" : done ? "done" : ""}`}>
+                                        <span className="rp-step-icon">{step.icon}</span>
+                                        <span className="rp-step-label">{step.label}</span>
+                                        {active && <span className="rp-step-pulse" />}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* ── Tabs ────────────────────────────────────────── */}
+                {(report || !loading) && (
+                    <div style={$.tabBar} role="tablist">
+                        {TABS.map(t => (
+                            <button
+                                key={t.key}
+                                role="tab"
+                                aria-selected={tab === t.key}
+                                className={`rp-tab ${tab === t.key ? "active" : ""}`}
+                                onClick={() => setTab(t.key)}
+                            >
+                                {t.label}
+                            </button>
                         ))}
                     </div>
-                    <div style={s.configRow}>
-                        <button onClick={addSection} style={s.addBtn}>+ Add section</button>
-                        <button onClick={resetSections} style={s.resetBtn}>Reset to defaults</button>
-                    </div>
-                </>
-            )}
+                )}
 
-            {/* ── Empty state ──────────────────────────────────── */}
-            {tab === "markdown" && !report && !loading && (
-                <div style={{ textAlign: "center", padding: "40px 0", color: "var(--color-text-secondary)", fontSize: "13px" }}>
-                    {filename
-                        ? "Hit Generate report to create a structured LaTeX report from the document."
-                        : "Select a document first, then generate a report."
-                    }
-                </div>
-            )}
-        </div>
+                {/* ── Preview ─────────────────────────────────────── */}
+                {tab === "preview" && report && (
+                    <div>
+                        <div style={$.metaRow}>
+                            <span style={$.metaChip}>{wc.toLocaleString()} words</span>
+                            <span style={$.metaDot}>·</span>
+                            <span style={$.metaChip}>{readTime(wc)} read</span>
+                            {discoveredSections.length > 0 && (
+                                <><span style={$.metaDot}>·</span>
+                                    <span style={$.metaChip}>{discoveredSections.length} sections</span></>
+                            )}
+                        </div>
+                        <div className="rp-md" style={$.mdWrap}>
+                            <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+                                {report.markdown}
+                            </ReactMarkdown>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── LaTeX ───────────────────────────────────────── */}
+                {tab === "latex" && report && (
+                    <div>
+                        <div style={$.latexToolbar}>
+                            <button className="rp-btn-ghost" onClick={copyLatex}>
+                                {copied ? "✓ Copied" : "⊕ Copy"}
+                            </button>
+                            <button className="rp-btn-ghost" onClick={() => download(report.latex, "tex", "text/plain")}>
+                                ↓ Download .tex
+                            </button>
+                            <span style={$.metaChip}>{(report.latex?.length || 0).toLocaleString()} chars</span>
+                        </div>
+                        <pre style={$.codeBlock}>{report.latex}</pre>
+                    </div>
+                )}
+
+                {/* ── Sections ────────────────────────────────────── */}
+                {tab === "sections" && discoveredSections.length > 0 && (
+                    <div>
+                        <p style={$.sectionNote}>
+                            Auto-discovered {discoveredSections.length} sections from PDF structure
+                        </p>
+                        <div style={$.sectionList}>
+                            {discoveredSections.map((sec, i) => (
+                                <div key={i} className="rp-sec-row">
+                                    <span className="rp-sec-num">{String(i + 1).padStart(2, "0")}</span>
+                                    <span className="rp-sec-name">{sec.name}</span>
+                                    <span className="rp-sec-wc">{wordCount(sec.text || "").toLocaleString()} w</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* ── Config ──────────────────────────────────────── */}
+                {tab === "config" && (
+                    <div>
+                        {useCustomSections ? (
+                            <>
+                                <p style={$.sectionNote}>
+                                    Custom sections override auto-discovery. Pages are divided evenly across them.
+                                </p>
+                                <div style={$.customList}>
+                                    {customSections.map((sec, i) => (
+                                        <div key={i} style={$.customRow}>
+                                            <span style={$.customNum}>{String(i + 1).padStart(2, "0")}</span>
+                                            <input
+                                                className="rp-input"
+                                                type="text"
+                                                value={sec}
+                                                onChange={e => updateCustom(i, e.target.value)}
+                                                placeholder={`Section ${i + 1}`}
+                                                aria-label={`Custom section ${i + 1}`}
+                                                style={{ flex: 1 }}
+                                            />
+                                            <button
+                                                className="rp-btn-icon"
+                                                onClick={() => removeCustom(i)}
+                                                disabled={customSections.length <= MIN_CUSTOM_SECTIONS}
+                                                aria-label="Remove"
+                                            >✕</button>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                                    <button
+                                        className="rp-btn-ghost"
+                                        onClick={addCustom}
+                                        disabled={customSections.length >= MAX_CUSTOM_SECTIONS}
+                                    >+ Add</button>
+                                    <button
+                                        className="rp-btn-ghost"
+                                        onClick={() => setCustomSections([""])}
+                                    >Clear all</button>
+                                </div>
+                            </>
+                        ) : (
+                            <div style={$.autoDiscoverInfo}>
+                                <span style={$.autoIcon}>⬡</span>
+                                <div>
+                                    <div style={$.autoTitle}>Auto-discovery enabled</div>
+                                    <div style={$.autoDesc}>
+                                        The backend will scan the PDF's page content to detect real chapter and section
+                                        boundaries. Enable "Use custom section names" above to override.
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* ── Empty states ────────────────────────────────── */}
+                {tab === "preview" && !report && !loading && (
+                    <div style={$.empty}>
+                        {filename ? (
+                            <>
+                                <div style={$.emptyIcon}>◈</div>
+                                <div style={$.emptyTitle}>Ready to generate</div>
+                                <div style={$.emptyDesc}>
+                                    Sections will be auto-discovered from the PDF structure.
+                                    <br />No configuration needed.
+                                </div>
+                                <button className="rp-btn-primary" onClick={generate} style={{ marginTop: 20 }}>
+                                    <span style={{ marginRight: 6 }}>✦</span> Generate report
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <div style={$.emptyIcon}>⬡</div>
+                                <div style={$.emptyTitle}>No document selected</div>
+                                <div style={$.emptyDesc}>Select a PDF to generate a report.</div>
+                            </>
+                        )}
+                    </div>
+                )}
+
+                {tab === "latex" && !report && !loading && (
+                    <div style={$.empty}>
+                        <div style={$.emptyIcon}>∴</div>
+                        <div style={$.emptyTitle}>No LaTeX yet</div>
+                        <div style={$.emptyDesc}>Generate a report first.</div>
+                    </div>
+                )}
+            </div>
+        </>
     );
+}
+
+// ── Style objects ─────────────────────────────────────────────
+const $ = {
+    root: {
+        fontFamily: "'DM Mono', 'Fira Code', monospace",
+        background: "#0e0e10",
+        color: "#e8e6e1",
+        minHeight: "100%",
+        padding: "0 0 40px",
+        letterSpacing: "0.01em",
+    },
+    topbar: {
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "20px 28px 16px",
+        borderBottom: "1px solid #1e1e22",
+    },
+    brand: { display: "flex", alignItems: "center", gap: 8 },
+    brandIcon: { color: "#c8a96e", fontSize: 18 },
+    brandText: {
+        fontFamily: "'Fraunces', Georgia, serif",
+        fontSize: 15, fontWeight: 500,
+        color: "#e8e6e1", letterSpacing: "0.02em",
+    },
+    fileTag: {
+        display: "flex", alignItems: "center", gap: 6,
+        fontSize: 11, color: "#6e6e78",
+        background: "#17171b",
+        border: "1px solid #2a2a30",
+        borderRadius: 4, padding: "4px 10px",
+        maxWidth: 260, overflow: "hidden",
+        textOverflow: "ellipsis", whiteSpace: "nowrap",
+        letterSpacing: "0.03em",
+    },
+    fileTagDot: {
+        width: 5, height: 5, borderRadius: "50%",
+        background: "#c8a96e", flexShrink: 0,
+    },
+
+    stale: {
+        display: "flex", alignItems: "center", gap: 8,
+        margin: "12px 28px 0",
+        padding: "8px 14px",
+        background: "#1e1800",
+        border: "1px solid #3d3000",
+        borderRadius: 4, fontSize: 12, color: "#b8960e",
+    },
+    staleIcon: { fontSize: 14 },
+
+    inputBlock: {
+        padding: "24px 28px 0",
+        display: "flex", flexDirection: "column", gap: 10,
+    },
+    inputLabel: { fontSize: 11, color: "#6e6e78", letterSpacing: "0.06em", textTransform: "uppercase" },
+    labelNote: { color: "#3e3e48", marginLeft: 4 },
+    inputRow: { display: "flex", gap: 8 },
+
+    actionRow: {
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "16px 28px", flexWrap: "wrap",
+    },
+    dlGroup: { display: "flex", gap: 6, marginLeft: "auto" },
+
+    errorBox: {
+        display: "flex", alignItems: "center", gap: 8,
+        margin: "0 28px 16px",
+        padding: "10px 14px",
+        background: "#1e0e0e",
+        border: "1px solid #4a1010",
+        borderRadius: 4, fontSize: 12, color: "#e05c5c",
+    },
+    errorIcon: { flexShrink: 0 },
+
+    progressBox: {
+        margin: "0 28px 20px",
+        background: "#13131a",
+        border: "1px solid #1e1e28",
+        borderRadius: 6,
+        overflow: "hidden",
+    },
+    progressHeader: {
+        display: "flex", alignItems: "baseline", justifyContent: "space-between",
+        padding: "14px 18px 10px",
+        borderBottom: "1px solid #1a1a22",
+    },
+    progressTitle: {
+        fontFamily: "'Fraunces', serif",
+        fontSize: 13, color: "#c8a96e", fontStyle: "italic",
+    },
+    progressSub: { fontSize: 11, color: "#4e4e58" },
+    stepGrid: { padding: "10px 6px 14px" },
+
+    tabBar: {
+        display: "flex",
+        borderBottom: "1px solid #1e1e22",
+        padding: "0 20px",
+        marginBottom: 0,
+    },
+
+    metaRow: {
+        display: "flex", alignItems: "center", gap: 6,
+        padding: "14px 28px 10px",
+    },
+    metaChip: {
+        fontSize: 11, color: "#5e5e68",
+        background: "#17171b",
+        border: "1px solid #222228",
+        borderRadius: 3, padding: "2px 8px",
+        letterSpacing: "0.04em",
+    },
+    metaDot: { color: "#2e2e38", fontSize: 16 },
+
+    mdWrap: {
+        padding: "4px 28px 28px",
+        maxHeight: "62vh", overflowY: "auto",
+        fontSize: 13.5, lineHeight: 1.8,
+    },
+
+    latexToolbar: {
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "14px 28px 10px", flexWrap: "wrap",
+    },
+    codeBlock: {
+        margin: "0 28px",
+        fontFamily: "'DM Mono', monospace",
+        fontSize: 11.5, lineHeight: 1.65,
+        background: "#0a0a0d",
+        border: "1px solid #1a1a20",
+        borderRadius: 4,
+        padding: "16px 18px",
+        overflowX: "auto", whiteSpace: "pre",
+        maxHeight: "60vh", overflowY: "auto",
+        color: "#8888a8",
+    },
+
+    sectionNote: {
+        fontSize: 11, color: "#4e4e58",
+        padding: "14px 28px 10px", margin: 0,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+    },
+    sectionList: {
+        padding: "0 28px",
+        display: "flex", flexDirection: "column",
+    },
+
+    customList: { display: "flex", flexDirection: "column", gap: 6, padding: "0 28px" },
+    customRow: { display: "flex", alignItems: "center", gap: 8 },
+    customNum: { fontSize: 11, color: "#3e3e48", width: 24, flexShrink: 0 },
+
+    autoDiscoverInfo: {
+        display: "flex", gap: 16, alignItems: "flex-start",
+        margin: "16px 28px",
+        padding: "18px 20px",
+        background: "#0f0f14",
+        border: "1px solid #1e1e28",
+        borderRadius: 6,
+    },
+    autoIcon: { fontSize: 22, color: "#c8a96e", flexShrink: 0, lineHeight: 1 },
+    autoTitle: { fontSize: 13, fontWeight: 500, color: "#c8a96e", marginBottom: 6, fontFamily: "'Fraunces', serif" },
+    autoDesc: { fontSize: 12, color: "#4e4e5e", lineHeight: 1.65 },
+
+    empty: {
+        display: "flex", flexDirection: "column", alignItems: "center",
+        padding: "64px 28px",
+        textAlign: "center",
+    },
+    emptyIcon: { fontSize: 32, color: "#2a2a35", marginBottom: 18, lineHeight: 1 },
+    emptyTitle: {
+        fontFamily: "'Fraunces', serif",
+        fontSize: 16, color: "#4a4a56",
+        marginBottom: 8, fontStyle: "italic",
+    },
+    emptyDesc: { fontSize: 12, color: "#2e2e3a", lineHeight: 1.7, maxWidth: 320 },
+};
+
+// ── CSS string ────────────────────────────────────────────────
+const CSS = `
+  @keyframes spin   { to { transform: rotate(360deg); } }
+  @keyframes pulse  { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  /* Input */
+  .rp-input {
+    width: 100%; box-sizing: border-box;
+    background: #13131a; border: 1px solid #252530;
+    color: #c8c6c1; font-family: 'DM Mono', monospace; font-size: 12.5px;
+    padding: 9px 13px; border-radius: 4px; outline: none;
+    transition: border-color .15s;
+    letter-spacing: .01em;
+  }
+  .rp-input:focus    { border-color: #c8a96e; }
+  .rp-input::placeholder { color: #333340; }
+
+  /* Toggle */
+  .rp-toggle {
+    display: flex; align-items: center; gap: 8px; cursor: pointer; width: fit-content;
+  }
+  .rp-toggle input { display: none; }
+  .rp-toggle-track {
+    width: 30px; height: 16px; border-radius: 8px;
+    background: #1e1e28; border: 1px solid #2a2a38;
+    position: relative; transition: background .2s;
+    flex-shrink: 0;
+  }
+  .rp-toggle-track::after {
+    content: ''; position: absolute;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #3a3a48; top: 2px; left: 2px;
+    transition: transform .2s, background .2s;
+  }
+  .rp-toggle input:checked ~ .rp-toggle-track { background: #2a2010; border-color: #c8a96e; }
+  .rp-toggle input:checked ~ .rp-toggle-track::after { transform: translateX(14px); background: #c8a96e; }
+
+  /* Buttons */
+  .rp-btn-primary {
+    display: inline-flex; align-items: center;
+    padding: 0 20px; height: 36px; font-size: 12.5px; font-weight: 500;
+    font-family: 'DM Mono', monospace; letter-spacing: .04em;
+    background: #c8a96e; color: #0a0a0e; border: none;
+    border-radius: 4px; cursor: pointer;
+    transition: background .15s, opacity .15s;
+    white-space: nowrap;
+  }
+  .rp-btn-primary:hover:not(:disabled) { background: #d4b880; }
+  .rp-btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+
+  .rp-btn-ghost {
+    display: inline-flex; align-items: center;
+    padding: 0 14px; height: 36px; font-size: 12px;
+    font-family: 'DM Mono', monospace; letter-spacing: .03em;
+    background: transparent; color: #6e6e78;
+    border: 1px solid #252530; border-radius: 4px;
+    cursor: pointer; transition: color .15s, border-color .15s;
+    white-space: nowrap;
+  }
+  .rp-btn-ghost:hover { color: #c8c6c1; border-color: #3a3a48; }
+
+  .rp-btn-icon {
+    width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid #222228; border-radius: 4px;
+    color: #3e3e50; font-size: 12px; cursor: pointer;
+    transition: color .15s, border-color .15s; flex-shrink: 0;
+  }
+  .rp-btn-icon:hover:not(:disabled) { color: #e05c5c; border-color: #4a1010; }
+  .rp-btn-icon:disabled { opacity: .3; cursor: not-allowed; }
+
+  .rp-link {
+    background: none; border: none; cursor: pointer;
+    color: #e05c5c; font-size: 12px; font-family: 'DM Mono', monospace;
+    text-decoration: underline; padding: 0; margin-left: 10px;
+  }
+
+  /* Spinner */
+  .rp-spinner {
+    display: inline-block; width: 11px; height: 11px;
+    border: 1.5px solid rgba(10,10,14,.3);
+    border-top-color: #0a0a0e;
+    border-radius: 50%; animation: spin .7s linear infinite;
+    margin-right: 6px; flex-shrink: 0;
+  }
+
+  /* Steps */
+  .rp-step {
+    display: flex; align-items: center; gap: 10;
+    padding: 6px 18px; opacity: .2; transition: opacity .3s;
+    position: relative;
+  }
+  .rp-step.done   { opacity: .35; }
+  .rp-step.active { opacity: 1; }
+  .rp-step-icon  { font-size: 14px; color: #c8a96e; width: 20px; text-align: center; flex-shrink: 0; }
+  .rp-step-label { font-size: 12px; color: #a0a0b0; letter-spacing: .03em; }
+  .rp-step.done .rp-step-icon  { color: #3a3a48; }
+  .rp-step.done .rp-step-label { color: #3a3a50; }
+  .rp-step-pulse {
+    position: absolute; right: 18px;
+    width: 5px; height: 5px; border-radius: 50%;
+    background: #c8a96e; animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  /* Tabs */
+  .rp-tab {
+    padding: 11px 18px; font-size: 11.5px;
+    font-family: 'DM Mono', monospace; letter-spacing: .05em;
+    text-transform: uppercase;
+    background: none; border: none;
+    color: #3e3e50; cursor: pointer;
+    border-bottom: 1.5px solid transparent;
+    margin-bottom: -1px;
+    transition: color .15s, border-color .15s;
+  }
+  .rp-tab:hover  { color: #8e8e98; }
+  .rp-tab.active { color: #c8a96e; border-bottom-color: #c8a96e; }
+
+  /* Section rows */
+  .rp-sec-row {
+    display: flex; align-items: baseline; gap: 12;
+    padding: 10px 0; border-bottom: 1px solid #141418;
+    animation: fadeIn .2s ease both;
+  }
+  .rp-sec-num  { font-size: 10px; color: #2e2e3a; width: 22px; flex-shrink: 0; }
+  .rp-sec-name { font-size: 12.5px; color: #a0a0b0; flex: 1; line-height: 1.4; }
+  .rp-sec-wc   { font-size: 10px; color: #2e2e3a; white-space: nowrap; }
+
+  /* Markdown */
+  .rp-md { color: #c8c6c1; }
+  .rp-md h1 {
+    font-family: 'Fraunces', serif;
+    font-size: 22px; font-weight: 300; font-style: italic;
+    color: #e8e6e1; margin: 0 0 24px; letter-spacing: -.01em;
+    line-height: 1.3; border-bottom: 1px solid #1e1e24; padding-bottom: 16px;
+  }
+  .rp-md h2 {
+    font-family: 'Fraunces', serif;
+    font-size: 16px; font-weight: 500;
+    color: #c8a96e; margin: 28px 0 10px;
+    letter-spacing: .01em;
+  }
+  .rp-md h3 { font-size: 13px; font-weight: 500; color: #a0a08a; margin: 18px 0 6px; }
+  .rp-md p  { margin: .6rem 0; color: #9090a4; line-height: 1.8; }
+  .rp-md ul,.rp-md ol { padding-left: 1.4rem; margin: .5rem 0; }
+  .rp-md li { margin: .3rem 0; color: #9090a4; font-size: 13px; }
+  .rp-md strong { color: #c8c6c1; font-weight: 500; }
+  .rp-md em     { color: #c8a96e; font-style: italic; }
+  .rp-md code   {
+    font-family: 'DM Mono', monospace; font-size: 11.5px;
+    background: #13131a; border: 1px solid #1e1e28;
+    padding: 1px 6px; border-radius: 3px; color: #a8a8c8;
+  }
+  .rp-md pre {
+    background: #0a0a0d; border: 1px solid #1a1a20;
+    border-radius: 4px; padding: 14px 16px; overflow-x: auto; margin: 12px 0;
+  }
+  .rp-md pre code { background: none; border: none; padding: 0; color: #8080a0; }
+  .rp-md table {
+    border-collapse: collapse; width: 100%;
+    font-size: 12px; margin: 14px 0;
+    border: 1px solid #1e1e28;
+  }
+  .rp-md th,.rp-md td { border: 1px solid #1e1e28; padding: 8px 12px; text-align: left; }
+  .rp-md th { background: #13131a; color: #c8a96e; font-weight: 500; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+  .rp-md td { color: #7070848; }
+  .rp-md blockquote {
+    border-left: 2px solid #c8a96e; padding: 2px 0 2px 14px;
+    margin: 10px 0; color: #5e5e70; font-style: italic;
+  }
+  .rp-md hr { border: none; border-top: 1px solid #1a1a22; margin: 24px 0; }
+  .rp-md a  { color: #c8a96e; text-decoration: none; }
+  .rp-md a:hover { text-decoration: underline; }
+`;
+
+// ── Minimal md → HTML for print ───────────────────────────────
+function mdToHtml(md) {
+    return md
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/^#### (.+)$/gm, "<h4>$1</h4>")
+        .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+        .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+        .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(.+?)\*/g, "<em>$1</em>")
+        .replace(/`(.+?)`/g, "<code>$1</code>")
+        .replace(/^- (.+)$/gm, "<li>$1</li>")
+        .replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
+        .replace(/\n{2,}/g, "</p><p>")
+        .replace(/^(?!<[hul])(.+)$/gm, "<p>$1</p>");
 }

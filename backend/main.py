@@ -45,7 +45,7 @@ import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
 from rag_graph    import crag_retrieve
-from report_graph import generate_report, DEFAULT_SECTIONS
+from report_graph import FAST_MODE, generate_report, DEFAULT_SECTIONS
 
 try:
     from rank_bm25 import BM25Okapi
@@ -1164,33 +1164,32 @@ def generate_report_endpoint():
     Body: {
         filename:   str,           required
         query_hint: str,           optional — report focus/topic
-        sections:   list[str],     optional — custom section names
+        sections:   list[str],     optional — custom section names ([] = auto-discover)
         format:     "both"|"markdown"|"latex"   default "both"
     }
- 
+
     Response: {
         markdown: str,
         latex:    str,
         sections: [{name, text}, ...],
         filename: str
     }
- 
+
     This is a blocking endpoint (report gen takes 30-120s).
-    For large docs, client should show a loading state.
     Parallel section generation via LangGraph Send() API.
     """
     data     = request.json or {}
     filename = data.get("filename", "").strip()
- 
+
     if not filename:
         return jsonify({"error": "filename required"}), 400
- 
+
     status = _get_status(filename)
     if status == "indexing":
         return jsonify({"error": f"'{filename}' is still being indexed"}), 202
     if status.startswith("error:"):
         return jsonify({"error": f"Indexing failed: {status[6:]}"}), 500
- 
+
     # Check collection has content
     try:
         col = _get_collection(filename)
@@ -1198,33 +1197,40 @@ def generate_report_endpoint():
             return jsonify({"error": f"No indexed content found for '{filename}'"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
- 
-    query_hint    = data.get("query_hint", "").strip()
-    custom_secs   = data.get("sections",   None)
-    fmt           = data.get("format",     "both")
- 
-    print(f"\n[REPORT] Starting report for '{filename}' | focus: '{query_hint or 'auto'}'")
- 
+
+    query_hint = data.get("query_hint", "").strip()
+    fmt        = data.get("format", "both")
+
+    # FIX: treat missing, null, and [] all as "auto-discover from PDF"
+    # Only pass sections to generate_report when the caller actually filled them in
+    raw_secs    = data.get("sections") or []
+    custom_secs = [s.strip() for s in raw_secs if isinstance(s, str) and s.strip()]
+    # None  → triggers auto-discovery in report_graph
+    # [...] → uses the provided list directly
+    sections_arg = custom_secs if custom_secs else None
+
+    print(f"\n[REPORT] Starting report for '{filename}' | focus: '{query_hint or 'auto'}' | "
+          f"sections: {'auto-discover' if sections_arg is None else len(sections_arg)}")
+
     try:
         result = generate_report(
             filename   = filename,
             query_hint = query_hint,
-            sections   = custom_secs,
+            sections   = sections_arg,
         )
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"Report generation failed: {e}"}), 500
- 
+
     response = {"filename": filename, "sections": result["sections"]}
- 
+
     if fmt in ("both", "markdown"):
         response["markdown"] = result["markdown"]
     if fmt in ("both", "latex"):
         response["latex"] = result["latex"]
- 
+
     return jsonify(response)
- 
  
 @app.route("/report-sections", methods=["GET"])
 def report_sections():
