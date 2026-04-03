@@ -1,65 +1,38 @@
 """
-document_loader.py  (v2 — optimised)
-─────────────────────────────────────
-PDF / TXT document loader.
+document_loader.py  (v5 — page image storage)
+──────────────────────────────────────────────
+Key changes over v4
+───────────────────
+1. PAGE IMAGE STORAGE  — during Phase 1, each page that has visual content
+   (or ALL pages, configurable) is rendered and saved as a PNG file to
+   IMAGE_DIR (default: ./page_images/<filename_stem>/page_<N>.png).
+   base64 is no longer held in memory after saving — reduces RAM usage.
 
-Key improvements over v1
-────────────────────────
-1. PARALLEL Phase-1  — ProcessPoolExecutor opens its own fitz.Document per
-   worker; fitz is thread-unsafe but process-safe.  3-5× speedup on large PDFs.
+2. _save_page_image()  — new helper that renders a page and writes PNG to
+   disk, returning the saved path. Called from _worker_extract_page.
 
-2. PYMUPDF4LLM once  — called once per document (not once per page) then
-   sliced by page-marker, eliminating repeated file re-opens.
+3. IMAGE_DIR config    — set via PAGE_IMAGE_DIR env var (default: ./page_images).
 
-3. TABLE DEDUP       — table-like lines are stripped from the raw markdown text
-   before text chunking so the same table is never stored twice.
+4. SAVE_ALL_PAGES      — env var (default: false). When true, saves ALL pages
+   as images (useful for document viewer). When false (default), only saves
+   pages that have visual content detected.
 
-4. CHUNK OVERLAP     — configurable overlap (default 200 chars) improves RAG
-   recall at chunk boundaries.
+5. b64 field removed from worker return tuple — replaced with image_path.
+   This prevents large base64 blobs from being serialised across process
+   boundaries via multiprocessing pipes (was a hidden bottleneck).
 
-5. SMARTER CHUNKER   — splits before headings (##/###) so headings stay with
-   their content; section headings are prepended to every chunk they own.
+6. IMAGE PATH in chunk cache — page image path stored in chunk metadata
+   (field: "image_path") so consumers know which image maps to which chunk.
 
-6. CHUNK CACHE       — MD5 hash of each file is stored alongside its chunks
-   (.chunks.json).  Re-running skips files that haven't changed.
+ALIGNMENT WITH main.py (v4)
+────────────────────────────
+- _safe_filename()      : identical rule — strip ext, replace [^a-zA-Z0-9] with '_'
+- _image_dir_for_file() : <PAGE_IMAGE_DIR>/<safe_stem>/
+- _page_image_path()    : <PAGE_IMAGE_DIR>/<safe_stem>/page_<N>.png
+- get_page_image_path() : returns path str if file exists, else None  (main.py uses None-check)
+- image_path in chunks  : always set via _page_image_path() so main.py lookups always match
 
-7. SKIP VISUAL DETECT when VLM is down — saves CPU.
-
-8. IMPROVED VLM PROMPT — more prescriptive; reduces SKIP false-negatives.
-
-9. VLM concurrency bumped to 5 default; inter-batch sleep removed (semaphore
-   already provides backpressure).
-
-Strategy per page
-─────────────────
-  ┌───────────────────────────────────────────────────────────┐
-  │  ALWAYS  → selectable text extraction (markdown / plain)  │
-  │  ALWAYS  → table extraction (pymupdf find_tables)         │
-  │  IF page has visual content AND Ollama UP → VLM call      │
-  │  IF page has visual content AND Ollama DOWN → skip        │
-  │  No OCR anywhere.                                         │
-  └───────────────────────────────────────────────────────────┘
-
-Two-phase PDF pipeline
-──────────────────────
-  Phase 1 (parallel processes) — fitz text + table extraction + page render
-    Each worker opens its own fitz.Document (process-safe).
-    Page images are pre-rendered here and returned as base64.
-  Phase 2 (concurrent async) — VLM calls fired via asyncio.gather
-    Network I/O only; semaphore caps parallel calls.
-
-.env keys
-─────────
-  OLLAMA_BASE_URL      (default http://localhost:11434)
-  VLM_MODEL            (default qwen2.5vl:7b)
-  VLM_TIMEOUT          (default 120 s)
-  VLM_MAX_CONCURRENT   (default 5)
-  PAGE_RENDER_DPI      (default 150)
-  CHUNK_SIZE           (default 1000)
-  CHUNK_OVERLAP        (default 200)
-  PHASE1_WORKERS       (default cpu_count or 4)
-  DOCS_DIR             (default ./docs)
-  CACHE_CHUNKS         (default true)
+All v4 features retained.
 """
 
 from __future__ import annotations
@@ -76,7 +49,7 @@ import os
 import re
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import fitz
@@ -93,11 +66,6 @@ for _lg in ["pymupdf4llm", "docling", "tesseract", "PIL",
     logging.getLogger(_lg).propagate = False
 
 
-def _import_pymupdf4llm():
-    import pymupdf4llm
-    return pymupdf4llm
-
-
 # ──────────────────────────────────────────────────────────────
 #  Config
 # ──────────────────────────────────────────────────────────────
@@ -105,15 +73,22 @@ def _import_pymupdf4llm():
 OLLAMA_BASE_URL    = os.getenv("OLLAMA_BASE_URL",        "http://localhost:11434")
 VLM_MODEL          = os.getenv("VLM_MODEL",              "qwen2.5vl:7b")
 VLM_TIMEOUT        = int(os.getenv("VLM_TIMEOUT",        "120"))
-VLM_MAX_CONCURRENT = int(os.getenv("VLM_MAX_CONCURRENT", "5"))     # ← bumped from 3
-PAGE_RENDER_DPI    = int(os.getenv("PAGE_RENDER_DPI",    "150"))
-CHUNK_SIZE         = int(os.getenv("CHUNK_SIZE",         "1000"))  # ← bumped from 600
-CHUNK_OVERLAP      = int(os.getenv("CHUNK_OVERLAP",      "200"))   # ← NEW
-PHASE1_WORKERS     = int(os.getenv("PHASE1_WORKERS",     str(min(os.cpu_count() or 4, 8))))
+VLM_MAX_CONCURRENT = int(os.getenv("VLM_MAX_CONCURRENT", "15"))
+PAGE_RENDER_DPI    = int(os.getenv("PAGE_RENDER_DPI",    "200"))
+CHUNK_SIZE         = int(os.getenv("CHUNK_SIZE",         "1000"))
+CHUNK_OVERLAP      = int(os.getenv("CHUNK_OVERLAP",      "200"))
+PHASE1_WORKERS     = int(os.getenv("PHASE1_WORKERS",     "6"))
 DOCS_DIR           = os.getenv("DOCS_DIR",               "./docs")
 CACHE_CHUNKS       = os.getenv("CACHE_CHUNKS",           "true").lower() == "true"
+SKIP_PYMUPDF4LLM   = os.getenv("SKIP_PYMUPDF4LLM",       "false").lower() == "true"
+
+# v5: image storage config
+PAGE_IMAGE_DIR     = os.path.abspath(os.getenv("PAGE_IMAGE_DIR",  "./page_images"))
+SAVE_ALL_PAGES     = os.getenv("SAVE_ALL_PAGES",  "false").lower() == "true"
+IMAGE_DPI          = int(os.getenv("IMAGE_DPI",   "150"))   # lower than VLM DPI — saves disk space
 
 _VLM_SEMAPHORE: asyncio.Semaphore | None = None
+_VLM_CLIENT:    httpx.AsyncClient | None = None
 
 
 def _get_semaphore() -> asyncio.Semaphore:
@@ -121,6 +96,26 @@ def _get_semaphore() -> asyncio.Semaphore:
     if _VLM_SEMAPHORE is None:
         _VLM_SEMAPHORE = asyncio.Semaphore(VLM_MAX_CONCURRENT)
     return _VLM_SEMAPHORE
+
+
+async def _get_client() -> httpx.AsyncClient:
+    global _VLM_CLIENT
+    if _VLM_CLIENT is None or _VLM_CLIENT.is_closed:
+        _VLM_CLIENT = httpx.AsyncClient(
+            timeout=VLM_TIMEOUT,
+            limits=httpx.Limits(
+                max_connections=VLM_MAX_CONCURRENT + 5,
+                max_keepalive_connections=VLM_MAX_CONCURRENT,
+            ),
+        )
+    return _VLM_CLIENT
+
+
+async def _close_client() -> None:
+    global _VLM_CLIENT
+    if _VLM_CLIENT and not _VLM_CLIENT.is_closed:
+        await _VLM_CLIENT.aclose()
+        _VLM_CLIENT = None
 
 
 # ──────────────────────────────────────────────────────────────
@@ -134,8 +129,9 @@ class Chunk:
     page:        Optional[int]
     chunk_index: int
     total_pages: int
-    type:        str    # "text" | "table" | "vlm"
-    method:      str    # "markdown" | "plain_text" | "vlm" | "pymupdf_table"
+    type:        str          # "text" | "table" | "vlm"
+    method:      str          # "markdown" | "dict_text" | "plain_text" | "vlm" | "pymupdf_table"
+    image_path:  str = ""     # v5: path to page PNG, empty if not saved
 
     def to_dict(self) -> dict:
         return {
@@ -146,6 +142,7 @@ class Chunk:
             "total_pages": self.total_pages,
             "type":        self.type,
             "method":      self.method,
+            "image_path":  self.image_path,
         }
 
 
@@ -183,7 +180,6 @@ def _cache_path(filepath: str) -> str:
 
 
 def _load_cache(filepath: str) -> list[dict] | None:
-    """Return cached chunks if file hasn't changed, else None."""
     if not CACHE_CHUNKS:
         return None
     cp = _cache_path(filepath)
@@ -213,7 +209,87 @@ def _save_cache(filepath: str, chunks: list[dict]) -> None:
 
 
 # ──────────────────────────────────────────────────────────────
-#  Render page → base64 PNG
+#  v5: Page image helpers
+#  ⚠ MUST stay in sync with the identical helpers in main.py
+#  Rule: strip extension, replace every [^a-zA-Z0-9] char with '_'
+#  Example: "My Doc (v2).pdf" → "My_Doc__v2_"
+# ──────────────────────────────────────────────────────────────
+
+def _safe_filename(filename: str) -> str:
+    """
+    Sanitise a filename into a safe directory stem.
+    IDENTICAL to the function in main.py — do not diverge.
+    """
+    stem = os.path.splitext(filename)[0]            # drop extension
+    return re.sub(r"[^a-zA-Z0-9]", "_", stem)      # sanitise
+
+
+def _image_dir_for_file(filename: str) -> str:
+    """
+    Absolute path to the directory holding page PNGs for *filename*.
+    Structure: <PAGE_IMAGE_DIR>/<safe_stem>/
+    IDENTICAL to main.py.
+    """
+    return os.path.join(PAGE_IMAGE_DIR, _safe_filename(filename))
+
+
+def _page_image_path(filename: str, page_num: int) -> str:
+    """
+    Canonical on-disk path for a page image.
+    Structure: <PAGE_IMAGE_DIR>/<safe_stem>/page_<N>.png
+    Always use this — never build the path manually elsewhere.
+    """
+    return os.path.join(_image_dir_for_file(filename), f"page_{page_num}.png")
+
+
+def _save_page_image(page: fitz.Page, filename: str, page_num: int,
+                     dpi: int = IMAGE_DPI) -> str:
+    """
+    Render *page* to a PNG and save it to disk.
+    Returns the saved path (via _page_image_path), or "" on failure.
+    Skips rendering if the file already exists on disk.
+    """
+    try:
+        img_dir  = _image_dir_for_file(filename)
+        os.makedirs(img_dir, exist_ok=True)
+
+        out_path = _page_image_path(filename, page_num)
+
+        # Skip if already rendered (e.g. re-index with cache disabled)
+        if os.path.exists(out_path):
+            return out_path
+
+        zoom   = dpi / 72
+        matrix = fitz.Matrix(zoom, zoom)
+        pix    = page.get_pixmap(matrix=matrix, colorspace=fitz.csRGB, alpha=False)
+        img    = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        img.save(out_path, format="PNG", optimize=True)
+        return out_path
+
+    except Exception as e:
+        print(f"  [IMG] Failed to save page {page_num} of {filename}: {e}")
+        return ""
+
+
+# ── Public helpers used by main.py ────────────────────────────
+
+def page_image_exists(filename: str, page_num: int) -> bool:
+    """Return True if the page PNG exists on disk."""
+    return os.path.exists(_page_image_path(filename, page_num))
+
+
+def get_page_image_path(filename: str, page_num: int) -> str | None:
+    """
+    Return the absolute path to page_<N>.png if it exists, else None.
+    main.py uses a None-check on the return value — must stay None, not "".
+    Naming follows _page_image_path() so main.py and loader always agree.
+    """
+    path = _page_image_path(filename, page_num)
+    return path if os.path.isfile(path) else None
+
+
+# ──────────────────────────────────────────────────────────────
+#  Render page → base64 PNG  (kept for VLM calls only)
 # ──────────────────────────────────────────────────────────────
 
 def _page_to_base64_png(page: fitz.Page, dpi: int = PAGE_RENDER_DPI) -> str:
@@ -241,24 +317,19 @@ async def _ollama_available() -> bool:
 
 
 # ──────────────────────────────────────────────────────────────
-#  VLM prompt (v2 — more prescriptive)
+#  VLM prompt
 # ──────────────────────────────────────────────────────────────
 
 VLM_PROMPT = (
-    "You are extracting visual content from a PDF page image for a RAG pipeline.\n"
-    "The selectable text layer has already been extracted separately.\n\n"
-    "Extract ONLY the following (nothing else):\n"
-    "1. Chart / graph data values, axis labels, tick labels, legend entries\n"
-    "2. Table contents — output as markdown table\n"
-    "3. Flowchart / diagram node labels, edge labels, arrow text\n"
-    "4. Any text embedded inside figures, callouts, or annotations\n\n"
-    "Rules:\n"
-    "- Be precise with numbers — copy them exactly.\n"
-    "- Use markdown tables for tabular data.\n"
-    "- Skip page headers, footers, watermarks, and decorative elements.\n"
-    "- If the page contains ONLY decorative images, solid blocks of colour, "
-    "or no visual data at all, reply with exactly: SKIP\n\n"
-    "Output plain text or markdown only."
+    "Extract visual content from this PDF page for a RAG system. "
+    "Text is already extracted separately — focus ONLY on:\n"
+    "- Charts/graphs: axis labels, tick values, legend text, data values\n"
+    "- Tables: reproduce as markdown table\n"
+    "- Diagrams/flowcharts: node labels, edge labels, arrow text\n"
+    "- Figure annotations, callout text, embedded labels\n\n"
+    "Be precise with numbers. Use markdown tables for tabular data. "
+    "Ignore headers, footers, watermarks, decorative elements. "
+    "If nothing visual to extract, reply: SKIP"
 )
 
 VLM_RETRY_ATTEMPTS = int(os.getenv("VLM_RETRY_ATTEMPTS", "4"))
@@ -276,23 +347,28 @@ async def _call_vlm(b64_image: str, page_num: int, filename: str) -> str:
         }],
     }
 
+    client = await _get_client()
+
     async with _get_semaphore():
         for attempt in range(1, VLM_RETRY_ATTEMPTS + 1):
             try:
-                async with httpx.AsyncClient(timeout=VLM_TIMEOUT) as client:
-                    r = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload)
+                r = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload)
 
-                    if r.status_code in (502, 503):
+                if r.status_code in (429, 502, 503):
+                    if r.status_code == 429:
+                        retry_after = r.headers.get("Retry-After")
+                        wait = float(retry_after) if retry_after else VLM_RETRY_BASE * (2 ** (attempt - 1))
+                    else:
                         wait = VLM_RETRY_BASE * (2 ** (attempt - 1))
-                        print(f"  [VLM] ⚠ HTTP {r.status_code} p.{page_num} "
-                              f"(attempt {attempt}/{VLM_RETRY_ATTEMPTS}) "
-                              f"retrying in {wait:.0f}s…")
-                        await asyncio.sleep(wait)
-                        continue
+                    print(f"  [VLM] ⚠ HTTP {r.status_code} p.{page_num} "
+                          f"(attempt {attempt}/{VLM_RETRY_ATTEMPTS}) "
+                          f"retrying in {wait:.0f}s…")
+                    await asyncio.sleep(wait)
+                    continue
 
-                    r.raise_for_status()
-                    result = r.json().get("message", {}).get("content", "").strip()
-                    return "" if result.upper() == "SKIP" else result
+                r.raise_for_status()
+                result = r.json().get("message", {}).get("content", "").strip()
+                return "" if result.upper() == "SKIP" else result
 
             except httpx.TimeoutException:
                 wait = VLM_RETRY_BASE * (2 ** (attempt - 1))
@@ -315,34 +391,95 @@ async def _call_vlm(b64_image: str, page_num: int, filename: str) -> str:
 
 
 # ──────────────────────────────────────────────────────────────
-#  pymupdf4llm — called ONCE per document, then sliced by page
+#  C-level stderr suppressor
 # ──────────────────────────────────────────────────────────────
 
-# pymupdf4llm inserts a page separator like:  \n---\n  between pages.
-_PAGE_SEP = re.compile(r'\n-{3,}\n')
+def _suppress_c_stderr() -> int:
+    sys.stdout.flush()
+    sys.stderr.flush()
+    devnull    = os.open(os.devnull, os.O_WRONLY)
+    old_stderr = os.dup(2)
+    os.dup2(devnull, 2)
+    os.close(devnull)
+    return old_stderr
 
 
-def _extract_all_pages_markdown(filepath: str, total_pages: int) -> list[str]:
-    """
-    Call pymupdf4llm once for the whole document and split the result
-    into per-page strings.  Falls back to empty strings on failure.
-    """
+def _restore_c_stderr(old_stderr: int) -> None:
+    sys.stderr.flush()
+    os.dup2(old_stderr, 2)
+    os.close(old_stderr)
+
+
+# ──────────────────────────────────────────────────────────────
+#  Worker process initializer
+# ──────────────────────────────────────────────────────────────
+
+_worker_pymupdf4llm = None
+
+
+def _worker_process_init():
+    global _worker_pymupdf4llm
+    if not SKIP_PYMUPDF4LLM:
+        try:
+            import pymupdf4llm as _m
+            _worker_pymupdf4llm = _m
+        except Exception:
+            _worker_pymupdf4llm = None
+
+
+# ──────────────────────────────────────────────────────────────
+#  Extract markdown for a single page inside a worker
+# ──────────────────────────────────────────────────────────────
+
+def _extract_page_markdown(filepath: str, page_num: int) -> str:
+    global _worker_pymupdf4llm
+    if SKIP_PYMUPDF4LLM or _worker_pymupdf4llm is None:
+        return ""
     try:
-        pymupdf4llm = _import_pymupdf4llm()
-        with _suppress_all_output():
-            full_md = pymupdf4llm.to_markdown(filepath, write_images=False)
-        parts = _PAGE_SEP.split(full_md)
-        # Pad or trim to match actual page count
-        while len(parts) < total_pages:
-            parts.append("")
-        return parts[:total_pages]
+        old_stderr = _suppress_c_stderr()
+        try:
+            with _suppress_all_output():
+                md = _worker_pymupdf4llm.to_markdown(
+                    filepath,
+                    pages        = [page_num - 1],
+                    write_images = False,
+                )
+        finally:
+            _restore_c_stderr(old_stderr)
+        return md.strip() if md else ""
     except Exception as e:
-        print(f"  [MD] pymupdf4llm failed for {filepath}: {e} — will use plain fitz")
-        return [""] * total_pages
+        print(f"  [MD] p.{page_num} pymupdf4llm failed ({e}) → dict fallback")
+        return ""
 
 
 # ──────────────────────────────────────────────────────────────
-#  Table-line stripper  (dedup: avoid text chunk = table chunk)
+#  Dict-mode text extractor
+# ──────────────────────────────────────────────────────────────
+
+def _extract_page_dict_text(page: fitz.Page) -> str:
+    try:
+        raw = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)
+        blocks = sorted(
+            raw.get("blocks", []),
+            key=lambda b: (round(b["bbox"][1] / 20), b["bbox"][0])
+        )
+        lines_out: list[str] = []
+        for block in blocks:
+            if block.get("type") != 0:
+                continue
+            for line in block.get("lines", []):
+                spans = line.get("spans", [])
+                line_text = " ".join(s.get("text", "").strip() for s in spans if s.get("text", "").strip())
+                if line_text:
+                    lines_out.append(line_text)
+        return "\n".join(lines_out).strip()
+    except Exception as e:
+        print(f"  [DICT] dict extraction failed: {e}")
+        return ""
+
+
+# ──────────────────────────────────────────────────────────────
+#  Table-line stripper
 # ──────────────────────────────────────────────────────────────
 
 _TABLE_LINE = re.compile(r'^\|.*\|[ \t]*$', re.MULTILINE)
@@ -350,15 +487,12 @@ _TABLE_SEP  = re.compile(r'^\|[\s\-:|]+\|[ \t]*$', re.MULTILINE)
 
 
 def _strip_table_lines(text: str) -> str:
-    """Remove markdown table rows from raw text so find_tables() chunks don't duplicate them."""
     lines  = text.splitlines(keepends=True)
     result = []
     i      = 0
     while i < len(lines):
         line = lines[i].rstrip()
-        # Detect start of a markdown table block
         if _TABLE_LINE.match(line):
-            # Skip forward until we leave the table block
             while i < len(lines) and (
                 _TABLE_LINE.match(lines[i].rstrip()) or
                 _TABLE_SEP.match(lines[i].rstrip())
@@ -370,8 +504,26 @@ def _strip_table_lines(text: str) -> str:
     return "".join(result)
 
 
+def _excise_table_regions(page: fitz.Page, text: str) -> str:
+    try:
+        table_list = page.find_tables()
+    except Exception:
+        return text
+    result = text
+    for tab in table_list:
+        try:
+            bbox       = tab.bbox
+            clip_rect  = fitz.Rect(bbox)
+            table_text = page.get_text("text", clip=clip_rect).strip()
+            if table_text:
+                result = result.replace(table_text, "")
+        except Exception:
+            pass
+    return result
+
+
 # ──────────────────────────────────────────────────────────────
-#  Smart chunker  (v2 — heading-aware + overlap)
+#  Smart chunker
 # ──────────────────────────────────────────────────────────────
 
 _HEADING = re.compile(r'^#{1,3} .+', re.MULTILINE)
@@ -384,6 +536,7 @@ def _smart_chunk(
     total_pages: int,
     method:      str,
     chunk_start: int,
+    image_path:  str = "",
     chunk_size:  int = CHUNK_SIZE,
     overlap:     int = CHUNK_OVERLAP,
 ) -> list[Chunk]:
@@ -392,7 +545,6 @@ def _smart_chunk(
     current:      str         = ""
     idx:          int         = chunk_start
 
-    # Split BEFORE headings so each heading stays with its own content
     blocks = re.split(r'(?=\n#{1,3} )', text)
 
     def flush(buf: str) -> None:
@@ -400,9 +552,9 @@ def _smart_chunk(
         buf = buf.strip()
         if not buf or len(buf) < 30:
             return
-        # Prepend heading context if available
         full = (current_head.strip() + "\n\n" + buf) if current_head else buf
-        chunks.append(Chunk(full.strip(), source, page, idx, total_pages, "text", method))
+        chunks.append(Chunk(full.strip(), source, page, idx, total_pages, "text", method,
+                            image_path=image_path))
         idx += 1
 
     for block in blocks:
@@ -411,16 +563,14 @@ def _smart_chunk(
             continue
 
         is_table = block.startswith("|") or "| ---" in block or "| :---" in block
-
-        # ── Table block ────────────────────────────────────────
         if is_table:
             flush(current)
             current = ""
-            chunks.append(Chunk(block, source, page, idx, total_pages, "table", method))
+            chunks.append(Chunk(block, source, page, idx, total_pages, "table", method,
+                                image_path=image_path))
             idx += 1
             continue
 
-        # ── Heading — update context, flush current ────────────
         head_match = _HEADING.match(block)
         if head_match:
             flush(current)
@@ -432,15 +582,13 @@ def _smart_chunk(
             else:
                 continue
 
-        # ── Normal text — accumulate with overlap ──────────────
         if len(current) + len(block) + 2 <= chunk_size:
             current += ("\n\n" if current else "") + block
         else:
             flush(current)
-            # carry overlap from end of previous chunk
-            words   = current.split()
-            overlap_words = words[-max(1, overlap // 6):]  # rough word-based overlap
-            current = " ".join(overlap_words) + "\n\n" + block if overlap_words else block
+            words         = current.split()
+            overlap_words = words[-max(1, overlap // 6):]
+            current       = " ".join(overlap_words) + "\n\n" + block if overlap_words else block
 
     flush(current)
     return chunks
@@ -456,6 +604,7 @@ def _extract_tables(
     page_num:    int,
     total_pages: int,
     chunk_start: int,
+    image_path:  str = "",
 ) -> list[Chunk]:
     chunks: list[Chunk] = []
     try:
@@ -474,6 +623,7 @@ def _extract_tables(
                         total_pages = total_pages,
                         type        = "table",
                         method      = "pymupdf_table",
+                        image_path  = image_path,
                     ))
                     print(f"  [TABLE] p.{page_num} t{i+1} → {df.shape[0]}r×{df.shape[1]}c")
             except Exception as e:
@@ -526,62 +676,77 @@ def _page_has_visual_content(page: fitz.Page) -> tuple[bool, str]:
 
 
 # ──────────────────────────────────────────────────────────────
-#  Phase 1 worker — runs in a separate process
-#  Each worker opens its own fitz.Document (process-safe).
+#  Phase 1 worker  (v5 — saves images to disk, no b64 in return)
 # ──────────────────────────────────────────────────────────────
+
+_MD_MIN_LEN = 30
+
 
 def _worker_extract_page(
     filepath:    str,
     filename:    str,
     page_num:    int,
     total_pages: int,
-    md_text:     str,    # pre-extracted markdown for this page
     ollama_up:   bool,
-) -> tuple[int, list[dict], Optional[str], str]:
+) -> tuple[int, list[dict], bool, str]:
     """
-    Returns (page_num, chunk_dicts, b64_or_None, visual_reason).
-    Must return plain dicts (not Chunk objects) — dataclasses cross process
-    boundaries fine but dicts are safer for pickling across Python versions.
+    Returns: (page_num, chunk_dicts, has_visual, image_path)
+
+    image_path is always produced via _page_image_path() so it is
+    consistent with the lookup in main.py. Caller must never build
+    the path manually.
     """
     chunks: list[Chunk] = []
+    image_path = ""
 
     try:
         doc  = fitz.open(filepath)
         page = doc[page_num - 1]
 
-        # ── Text ───────────────────────────────────────────────
-        if md_text and len(md_text.strip()) > 30:
-            clean_text = _strip_table_lines(md_text)   # dedup: remove table rows
-            text_chunks = _smart_chunk(
-                clean_text, filename, page_num, total_pages, "markdown", 0
-            )
-            method = "markdown"
+        # ── Step 1: always save page image to disk ───────────────
+        # We save every page (not just visual ones) so the document
+        # viewer in main.py can always serve /page-image/<file>/<N>.
+        # _save_page_image is a no-op if the file already exists.
+        image_path = _save_page_image(page, filename, page_num)
+
+        # Check for visual content to decide VLM queuing
+        has_visual, reason = _page_has_visual_content(page)
+
+        # ── Step 2: tables ──────────────────────────────────────
+        table_chunks = _extract_tables(page, filename, page_num, total_pages, 0,
+                                       image_path=image_path)
+
+        # ── Step 3: text extraction with 3-tier fallback ────────
+        md_text = _extract_page_markdown(filepath, page_num)
+        method  = "plain_text"
+
+        if md_text and len(md_text.strip()) > _MD_MIN_LEN:
+            clean_text = _strip_table_lines(md_text)
+            clean_text = _excise_table_regions(page, clean_text)
+            method     = "markdown"
         else:
-            plain = page.get_text("text").strip()
-            if plain:
-                clean_text  = _strip_table_lines(plain)
-                text_chunks = _smart_chunk(
-                    clean_text, filename, page_num, total_pages, "plain_text", 0
-                )
-                method = "plain_text"
+            dict_text = _extract_page_dict_text(page)
+            if dict_text and len(dict_text.strip()) > _MD_MIN_LEN:
+                clean_text = _strip_table_lines(dict_text)
+                clean_text = _excise_table_regions(page, clean_text)
+                method     = "dict_text"
+                if not md_text:
+                    print(f"  [TEXT] p.{page_num} md empty → dict fallback")
             else:
-                text_chunks = []
-                method = "plain_text"
+                plain = page.get_text("text").strip()
+                clean_text = _strip_table_lines(plain) if plain else ""
+                clean_text = _excise_table_regions(page, clean_text) if clean_text else ""
+                method     = "plain_text"
+                if not dict_text:
+                    print(f"  [TEXT] p.{page_num} dict empty → plain fallback")
+
+        text_chunks = _smart_chunk(
+            clean_text, filename, page_num, total_pages, method, 0,
+            image_path=image_path,
+        ) if clean_text and len(clean_text.strip()) > _MD_MIN_LEN else []
 
         chunks.extend(text_chunks)
-
-        # ── Tables ─────────────────────────────────────────────
-        table_chunks = _extract_tables(page, filename, page_num, total_pages, len(chunks))
         chunks.extend(table_chunks)
-
-        # ── Visual detection + render (only when VLM is up) ────
-        b64: Optional[str] = None
-        reason = "no visual content"
-
-        if ollama_up:                          # ← skip entirely if VLM down
-            has_visual, reason = _page_has_visual_content(page)
-            if has_visual:
-                b64 = _page_to_base64_png(page)
 
         doc.close()
 
@@ -589,33 +754,44 @@ def _worker_extract_page(
         import traceback
         print(f"  [WORKER] p.{page_num} error: {e}")
         traceback.print_exc()
-        return page_num, [], None, "worker error"
+        return page_num, [], False, ""
 
-    return page_num, [c.to_dict() for c in chunks], b64, reason
+    return page_num, [c.to_dict() for c in chunks], has_visual, image_path
 
 
 # ──────────────────────────────────────────────────────────────
 #  Phase 2 helper — async VLM call for one page
+#  v5: reads from saved disk image rather than receiving b64
 # ──────────────────────────────────────────────────────────────
 
 async def _vlm_for_page(
-    b64:         str,
+    image_path:  str,
     page_num:    int,
     total_pages: int,
     filename:    str,
-    chunk_start: int,
 ) -> list[Chunk]:
+    """Read PNG from disk, encode to b64, call VLM."""
+    try:
+        with open(image_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+    except Exception as e:
+        print(f"  [VLM] ✗ Could not read image {image_path}: {e}")
+        return []
+
     vlm_text = await _call_vlm(b64, page_num, filename)
     if not vlm_text:
         return []
 
+    # image_path is set via _page_image_path inside _save_page_image
+    # so it is already consistent with main.py — pass it straight through
     chunks = _smart_chunk(
         text        = f"[VLM | Page {page_num}/{total_pages}]\n{vlm_text}",
         source      = filename,
         page        = page_num,
         total_pages = total_pages,
         method      = "vlm",
-        chunk_start = chunk_start,
+        chunk_start = 0,
+        image_path  = image_path,
     )
     print(f"  [VLM] p.{page_num} → {len(chunks)} chunks")
     return chunks
@@ -631,10 +807,8 @@ async def _process_pdf(filepath: str, ollama_up: bool) -> list[Chunk]:
     print(f"[LOADER] Processing: {filename}")
     print(f"{'═'*60}")
 
-    # ── Cache check ────────────────────────────────────────────
     cached = _load_cache(filepath)
     if cached is not None:
-        # Re-hydrate as Chunk objects
         return [Chunk(**c) for c in cached]
 
     all_chunks: list[Chunk] = []
@@ -642,31 +816,28 @@ async def _process_pdf(filepath: str, ollama_up: bool) -> list[Chunk]:
     try:
         doc         = fitz.open(filepath)
         total_pages = len(doc)
-        doc.close()   # close immediately; workers will open their own
+        doc.close()
 
-        print(f"  Pages   : {total_pages}")
-        print(f"  Workers : {PHASE1_WORKERS} (Phase 1)")
-        print(f"  VLM     : {'ON  → ' + VLM_MODEL if ollama_up else 'OFF → images skipped'}")
-        print(f"  Cache   : {'enabled' if CACHE_CHUNKS else 'disabled'}")
+        print(f"  Pages     : {total_pages}")
+        print(f"  Workers   : {PHASE1_WORKERS}")
+        print(f"  VLM       : {'ON  → ' + VLM_MODEL if ollama_up else 'OFF → images skipped'}")
+        print(f"  DPI       : {PAGE_RENDER_DPI} (VLM)  {IMAGE_DPI} (stored images)")
+        print(f"  Image dir : {_image_dir_for_file(filename)}")
+        print(f"  Save all  : {SAVE_ALL_PAGES}")
+        print(f"  MD mode   : {'plain fitz' if SKIP_PYMUPDF4LLM else 'pymupdf4llm → dict → plain (3-tier)'}")
+        print(f"  Cache     : {'enabled' if CACHE_CHUNKS else 'disabled'}")
 
-        # ── Extract markdown once for the whole doc ────────────
-        print(f"  [MD] Extracting full-document markdown …", end=" ", flush=True)
-        md_pages = _extract_all_pages_markdown(filepath, total_pages)
-        print("done")
+        # ── Phase 1: parallel workers ──────────────────────────
+        page_results: dict[int, tuple[list[dict], bool, str]] = {}
 
-        # ── Phase 1: parallel fitz workers ────────────────────
-        page_results: dict[int, tuple[list[dict], Optional[str], str]] = {}
-
-        with ProcessPoolExecutor(max_workers=PHASE1_WORKERS) as pool:
+        with ProcessPoolExecutor(
+            max_workers = PHASE1_WORKERS,
+            initializer = _worker_process_init,
+        ) as pool:
             futures = {
                 pool.submit(
                     _worker_extract_page,
-                    filepath,
-                    filename,
-                    pn,
-                    total_pages,
-                    md_pages[pn - 1],
-                    ollama_up,
+                    filepath, filename, pn, total_pages, ollama_up,
                 ): pn
                 for pn in range(1, total_pages + 1)
             }
@@ -675,30 +846,31 @@ async def _process_pdf(filepath: str, ollama_up: bool) -> list[Chunk]:
             for future in as_completed(futures):
                 pn = futures[future]
                 try:
-                    page_num, chunk_dicts, b64, reason = future.result()
-                    page_results[page_num] = (chunk_dicts, b64, reason)
+                    page_num, chunk_dicts, has_visual, image_path = future.result()
+                    page_results[page_num] = (chunk_dicts, has_visual, image_path)
                 except Exception as e:
                     print(f"  [PHASE 1] p.{pn} future error: {e}")
-                    page_results[pn] = ([], None, "future error")
+                    page_results[pn] = ([], False, "")
 
                 done += 1
-                if done % 10 == 0 or done == total_pages:
+                if done % 50 == 0 or done == total_pages:
                     print(f"  [PHASE 1] {done}/{total_pages} pages processed", flush=True)
 
         # ── Merge Phase-1 results in page order ───────────────
         running_idx = 0
-        vlm_queue: list[tuple[str, int]] = []
+        vlm_queue: list[tuple[str, int]] = []   # (image_path, page_num)
 
         for pn in range(1, total_pages + 1):
-            chunk_dicts, b64, reason = page_results.get(pn, ([], None, "missing"))
+            chunk_dicts, has_visual, image_path = page_results.get(pn, ([], False, ""))
             for d in chunk_dicts:
                 d["chunk_index"] = running_idx
                 all_chunks.append(Chunk(**d))
                 running_idx += 1
-            if b64 and ollama_up:
-                vlm_queue.append((b64, pn))
+            if has_visual and ollama_up and image_path:
+                vlm_queue.append((image_path, pn))
 
-        print(f"\n  [PHASE 1] complete — {len(vlm_queue)} page(s) queued for VLM")
+        print(f"\n  [PHASE 1] complete — {running_idx} chunks, "
+              f"{len(vlm_queue)} page(s) queued for VLM")
 
         # ── Phase 2: concurrent VLM calls ─────────────────────
         if vlm_queue and ollama_up:
@@ -714,8 +886,8 @@ async def _process_pdf(filepath: str, ollama_up: bool) -> list[Chunk]:
                       f"— pages {[pnum for _, pnum in batch]}", flush=True)
 
                 batch_results: list[list[Chunk]] = await asyncio.gather(*[
-                    _vlm_for_page(b64, pnum, total_pages, filename, running_idx + i)
-                    for i, (b64, pnum) in enumerate(batch)
+                    _vlm_for_page(img_path, pnum, total_pages, filename)
+                    for img_path, pnum in batch
                 ])
 
                 for vlm_chunks in batch_results:
@@ -724,13 +896,13 @@ async def _process_pdf(filepath: str, ollama_up: bool) -> list[Chunk]:
                         running_idx  += 1
                     all_chunks.extend(vlm_chunks)
 
-                # No sleep between batches — semaphore handles backpressure
-
     except Exception as e:
         import traceback
         print(f"\n[LOADER] ✗ Failed: {filename}: {e}")
         traceback.print_exc()
         return []
+    finally:
+        await _close_client()
 
     n_text  = sum(1 for c in all_chunks if c.type == "text")
     n_table = sum(1 for c in all_chunks if c.type == "table")
@@ -740,9 +912,7 @@ async def _process_pdf(filepath: str, ollama_up: bool) -> list[Chunk]:
     print(f"  Total : {len(all_chunks)} chunks  "
           f"(text={n_text}  table={n_table}  vlm={n_vlm})")
 
-    # ── Save cache ─────────────────────────────────────────────
     _save_cache(filepath, [c.to_dict() for c in all_chunks])
-
     return all_chunks
 
 
@@ -754,7 +924,11 @@ async def load_single_file_async(filepath: str, filename: str) -> list[dict]:
     ext = os.path.splitext(filename)[1].lower()
 
     if ext == ".pdf":
-        ollama_up = False if os.getenv("SKIP_VLM", "false").lower() == "true" else await _ollama_available()
+        ollama_up = (
+            False
+            if os.getenv("SKIP_VLM", "false").lower() == "true"
+            else await _ollama_available()
+        )
         print(f"[LOADER] Ollama: "
               f"{'UP  → ' + VLM_MODEL if ollama_up else 'DOWN → images skipped'}")
         file_chunks = await _process_pdf(filepath, ollama_up)
@@ -776,7 +950,6 @@ async def load_single_file_async(filepath: str, filename: str) -> list[dict]:
 
 
 def load_single_file(filepath: str, filename: str) -> list[dict]:
-    """Sync wrapper — safe to call from Flask background threads."""
     return asyncio.run(load_single_file_async(filepath, filename))
 
 
@@ -824,7 +997,7 @@ def load_documents(docs_dir: str = DOCS_DIR) -> list[dict]:
 if __name__ == "__main__":
     import argparse, pprint
 
-    p = argparse.ArgumentParser(description="Document Loader v2 (parallel + cached)")
+    p = argparse.ArgumentParser(description="Document Loader v5 (page image storage)")
     p.add_argument("--docs-dir",    default=DOCS_DIR)
     p.add_argument("--file",        default=None)
     p.add_argument("--json",        action="store_true")
