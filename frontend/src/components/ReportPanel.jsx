@@ -2,13 +2,10 @@
  * ReportPanel.jsx — Redesigned
  * Aesthetic: dark editorial / research terminal
  * Font: DM Mono for UI, Fraunces for headings
- * All original functionality preserved + improved UX
+ * Markdown removed — LaTeX output only
  */
 
 import { useState, useRef, useEffect, useCallback, useId } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 
 // ── constants ──────────────────────────────────────────────────
 const AGENT_STEPS = [
@@ -17,7 +14,6 @@ const AGENT_STEPS = [
     { key: "fanout", icon: "⟁", label: "Spawning parallel section writers" },
     { key: "write", icon: "▦", label: "Writing sections concurrently" },
     { key: "reduce", icon: "⊟", label: "Stitching sections in order" },
-    { key: "latex", icon: "∴", label: "Rendering LaTeX output" },
     { key: "done", icon: "✦", label: "Report ready" },
 ];
 
@@ -28,16 +24,16 @@ const MAX_RETRIES = 2;
 const SESSION_HINT_KEY = "rp_query_hint";
 
 // ── helpers ────────────────────────────────────────────────────
-const wordCount = (t = "") => t.trim().split(/\s+/).filter(Boolean).length;
-const readTime = (w) => `${Math.max(1, Math.round(w / 200))} min`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const cleanName = (s = "") => s.replace(/_pdf$/i, "").replace(/\.pdf$/i, "").replace(/_/g, " ").trim();
+const cleanName = (s = "") =>
+    s.replace(/_pdf$/i, "").replace(/\.pdf$/i, "").replace(/_/g, " ").trim();
+const charCount = (t = "") => t.length;
 
 // ── component ──────────────────────────────────────────────────
 export default function ReportPanel({ filename, apiBase = "http://localhost:8080", onReportReady }) {
-    const uid = useId();
+    useId();
 
-    const [tab, setTab] = useState("preview");
+    const [tab, setTab] = useState("latex");
     const [report, setReport] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -105,7 +101,6 @@ export default function ReportPanel({ filename, apiBase = "http://localhost:8080
                         filename,
                         query_hint: queryHint.trim(),
                         sections: sectionsPayload,
-                        format: "both",
                     }),
                 });
                 if (!res.ok) {
@@ -116,13 +111,15 @@ export default function ReportPanel({ filename, apiBase = "http://localhost:8080
                 }
                 const data = await res.json();
                 setReport(data);
-                setTab("preview");
+                setTab("latex");
                 onReportReady?.(data);
                 break;
             } catch (e) {
                 if (e.name === "AbortError") { setError("Cancelled."); break; }
                 if (attempt >= MAX_RETRIES) {
-                    setError(e instanceof TypeError ? "Network error — check connection." : e.message || "Unexpected error.");
+                    setError(e instanceof TypeError
+                        ? "Network error — check connection."
+                        : e.message || "Unexpected error.");
                     break;
                 }
                 attempt++;
@@ -153,45 +150,18 @@ export default function ReportPanel({ filename, apiBase = "http://localhost:8080
         });
     };
 
-    const printPdf = () => {
-        if (!report?.markdown) return;
-        const html = mdToHtml(report.markdown);
-        const doc = `<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>${cleanName(filename)}</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
-  body{font-family:'Lora',Georgia,serif;max-width:680px;margin:48px auto;font-size:13.5px;line-height:1.85;color:#1a1a1a}
-  h1{font-size:24px;font-weight:600;margin:0 0 24px;letter-spacing:-.02em}
-  h2{font-size:17px;font-weight:600;margin:28px 0 10px;border-bottom:1px solid #ddd;padding-bottom:6px}
-  h3{font-size:14px;font-weight:600;margin:20px 0 8px}
-  code{font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:#f4f4f4;padding:1px 5px;border-radius:3px}
-  pre{background:#f4f4f4;padding:14px;border-radius:4px;overflow-x:auto}
-  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:12.5px}
-  th,td{border:1px solid #ddd;padding:7px 10px}th{background:#f7f7f7;font-weight:600}
-  @media print{body{margin:0}}
-</style></head><body>${html}</body></html>`;
-        const iframe = document.createElement("iframe");
-        iframe.style.display = "none";
-        document.body.appendChild(iframe);
-        iframe.contentDocument.write(doc);
-        iframe.contentDocument.close();
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-        setTimeout(() => document.body.removeChild(iframe), 3000);
-    };
-
     // custom sections helpers
     const addCustom = () => customSections.length < MAX_CUSTOM_SECTIONS && setCustomSections(s => [...s, ""]);
     const updateCustom = (i, v) => setCustomSections(s => s.map((x, j) => j === i ? v : x));
     const removeCustom = (i) => customSections.length > MIN_CUSTOM_SECTIONS && setCustomSections(s => s.filter((_, j) => j !== i));
 
-    const wc = report?.markdown ? wordCount(report.markdown) : 0;
     const discoveredSections = report?.sections?.filter(s => s?.name) || [];
 
     const TABS = [
-        { key: "preview", label: "Preview" },
         { key: "latex", label: "LaTeX" },
-        ...(discoveredSections.length > 0 ? [{ key: "sections", label: `Sections·${discoveredSections.length}` }] : []),
+        ...(discoveredSections.length > 0
+            ? [{ key: "sections", label: `Sections·${discoveredSections.length}` }]
+            : []),
         { key: "config", label: "Config" },
     ];
 
@@ -230,7 +200,9 @@ export default function ReportPanel({ filename, apiBase = "http://localhost:8080
 
                 {/* ── Input area ──────────────────────────────────── */}
                 <div style={$.inputBlock}>
-                    <label style={$.inputLabel}>Focus / topic <span style={$.labelNote}>(optional)</span></label>
+                    <label style={$.inputLabel}>
+                        Focus / topic <span style={$.labelNote}>(optional)</span>
+                    </label>
                     <div style={$.inputRow}>
                         <input
                             className="rp-input"
@@ -278,9 +250,9 @@ export default function ReportPanel({ filename, apiBase = "http://localhost:8080
 
                     {report && !loading && (
                         <div style={$.dlGroup}>
-                            <button className="rp-btn-ghost" onClick={() => download(report.markdown, "md", "text/markdown")}>↓ .md</button>
-                            <button className="rp-btn-ghost" onClick={() => download(report.latex, "tex", "text/plain")}>↓ .tex</button>
-                            <button className="rp-btn-ghost" onClick={printPdf}>⎙ Print</button>
+                            <button className="rp-btn-ghost" onClick={() => download(report.latex, "tex", "text/plain")}>
+                                ↓ .tex
+                            </button>
                         </div>
                     )}
                 </div>
@@ -336,26 +308,6 @@ export default function ReportPanel({ filename, apiBase = "http://localhost:8080
                     </div>
                 )}
 
-                {/* ── Preview ─────────────────────────────────────── */}
-                {tab === "preview" && report && (
-                    <div>
-                        <div style={$.metaRow}>
-                            <span style={$.metaChip}>{wc.toLocaleString()} words</span>
-                            <span style={$.metaDot}>·</span>
-                            <span style={$.metaChip}>{readTime(wc)} read</span>
-                            {discoveredSections.length > 0 && (
-                                <><span style={$.metaDot}>·</span>
-                                    <span style={$.metaChip}>{discoveredSections.length} sections</span></>
-                            )}
-                        </div>
-                        <div className="rp-md" style={$.mdWrap}>
-                            <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
-                                {report.markdown}
-                            </ReactMarkdown>
-                        </div>
-                    </div>
-                )}
-
                 {/* ── LaTeX ───────────────────────────────────────── */}
                 {tab === "latex" && report && (
                     <div>
@@ -366,7 +318,7 @@ export default function ReportPanel({ filename, apiBase = "http://localhost:8080
                             <button className="rp-btn-ghost" onClick={() => download(report.latex, "tex", "text/plain")}>
                                 ↓ Download .tex
                             </button>
-                            <span style={$.metaChip}>{(report.latex?.length || 0).toLocaleString()} chars</span>
+                            <span style={$.metaChip}>{charCount(report.latex).toLocaleString()} chars</span>
                         </div>
                         <pre style={$.codeBlock}>{report.latex}</pre>
                     </div>
@@ -383,7 +335,9 @@ export default function ReportPanel({ filename, apiBase = "http://localhost:8080
                                 <div key={i} className="rp-sec-row">
                                     <span className="rp-sec-num">{String(i + 1).padStart(2, "0")}</span>
                                     <span className="rp-sec-name">{sec.name}</span>
-                                    <span className="rp-sec-wc">{wordCount(sec.text || "").toLocaleString()} w</span>
+                                    <span className="rp-sec-wc">
+                                        {charCount(sec.text || "").toLocaleString()} chars
+                                    </span>
                                 </div>
                             ))}
                         </div>
@@ -438,8 +392,8 @@ export default function ReportPanel({ filename, apiBase = "http://localhost:8080
                                 <div>
                                     <div style={$.autoTitle}>Auto-discovery enabled</div>
                                     <div style={$.autoDesc}>
-                                        The backend will scan the PDF's page content to detect real chapter and section
-                                        boundaries. Enable "Use custom section names" above to override.
+                                        The backend will scan the PDF's page content to detect real chapter
+                                        and section boundaries. Enable "Use custom section names" above to override.
                                     </div>
                                 </div>
                             </div>
@@ -447,16 +401,16 @@ export default function ReportPanel({ filename, apiBase = "http://localhost:8080
                     </div>
                 )}
 
-                {/* ── Empty states ────────────────────────────────── */}
-                {tab === "preview" && !report && !loading && (
+                {/* ── Empty state ─────────────────────────────────── */}
+                {tab === "latex" && !report && !loading && (
                     <div style={$.empty}>
                         {filename ? (
                             <>
-                                <div style={$.emptyIcon}>◈</div>
+                                <div style={$.emptyIcon}>∴</div>
                                 <div style={$.emptyTitle}>Ready to generate</div>
                                 <div style={$.emptyDesc}>
                                     Sections will be auto-discovered from the PDF structure.
-                                    <br />No configuration needed.
+                                    <br />Output will be a complete compilable LaTeX document.
                                 </div>
                                 <button className="rp-btn-primary" onClick={generate} style={{ marginTop: 20 }}>
                                     <span style={{ marginRight: 6 }}>✦</span> Generate report
@@ -469,14 +423,6 @@ export default function ReportPanel({ filename, apiBase = "http://localhost:8080
                                 <div style={$.emptyDesc}>Select a PDF to generate a report.</div>
                             </>
                         )}
-                    </div>
-                )}
-
-                {tab === "latex" && !report && !loading && (
-                    <div style={$.empty}>
-                        <div style={$.emptyIcon}>∴</div>
-                        <div style={$.emptyTitle}>No LaTeX yet</div>
-                        <div style={$.emptyDesc}>Generate a report first.</div>
                     </div>
                 )}
             </div>
@@ -581,23 +527,12 @@ const $ = {
         marginBottom: 0,
     },
 
-    metaRow: {
-        display: "flex", alignItems: "center", gap: 6,
-        padding: "14px 28px 10px",
-    },
     metaChip: {
         fontSize: 11, color: "#5e5e68",
         background: "#17171b",
         border: "1px solid #222228",
         borderRadius: 3, padding: "2px 8px",
         letterSpacing: "0.04em",
-    },
-    metaDot: { color: "#2e2e38", fontSize: 16 },
-
-    mdWrap: {
-        padding: "4px 28px 28px",
-        maxHeight: "62vh", overflowY: "auto",
-        fontSize: 13.5, lineHeight: 1.8,
     },
 
     latexToolbar: {
@@ -613,7 +548,7 @@ const $ = {
         borderRadius: 4,
         padding: "16px 18px",
         overflowX: "auto", whiteSpace: "pre",
-        maxHeight: "60vh", overflowY: "auto",
+        maxHeight: "65vh", overflowY: "auto",
         color: "#8888a8",
     },
 
@@ -664,19 +599,16 @@ const CSS = `
   @keyframes pulse  { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-  /* Input */
   .rp-input {
     width: 100%; box-sizing: border-box;
     background: #13131a; border: 1px solid #252530;
     color: #c8c6c1; font-family: 'DM Mono', monospace; font-size: 12.5px;
     padding: 9px 13px; border-radius: 4px; outline: none;
-    transition: border-color .15s;
-    letter-spacing: .01em;
+    transition: border-color .15s; letter-spacing: .01em;
   }
-  .rp-input:focus    { border-color: #c8a96e; }
+  .rp-input:focus       { border-color: #c8a96e; }
   .rp-input::placeholder { color: #333340; }
 
-  /* Toggle */
   .rp-toggle {
     display: flex; align-items: center; gap: 8px; cursor: pointer; width: fit-content;
   }
@@ -684,8 +616,7 @@ const CSS = `
   .rp-toggle-track {
     width: 30px; height: 16px; border-radius: 8px;
     background: #1e1e28; border: 1px solid #2a2a38;
-    position: relative; transition: background .2s;
-    flex-shrink: 0;
+    position: relative; transition: background .2s; flex-shrink: 0;
   }
   .rp-toggle-track::after {
     content: ''; position: absolute;
@@ -696,15 +627,13 @@ const CSS = `
   .rp-toggle input:checked ~ .rp-toggle-track { background: #2a2010; border-color: #c8a96e; }
   .rp-toggle input:checked ~ .rp-toggle-track::after { transform: translateX(14px); background: #c8a96e; }
 
-  /* Buttons */
   .rp-btn-primary {
     display: inline-flex; align-items: center;
     padding: 0 20px; height: 36px; font-size: 12.5px; font-weight: 500;
     font-family: 'DM Mono', monospace; letter-spacing: .04em;
     background: #c8a96e; color: #0a0a0e; border: none;
     border-radius: 4px; cursor: pointer;
-    transition: background .15s, opacity .15s;
-    white-space: nowrap;
+    transition: background .15s, opacity .15s; white-space: nowrap;
   }
   .rp-btn-primary:hover:not(:disabled) { background: #d4b880; }
   .rp-btn-primary:disabled { opacity: .4; cursor: not-allowed; }
@@ -715,8 +644,7 @@ const CSS = `
     font-family: 'DM Mono', monospace; letter-spacing: .03em;
     background: transparent; color: #6e6e78;
     border: 1px solid #252530; border-radius: 4px;
-    cursor: pointer; transition: color .15s, border-color .15s;
-    white-space: nowrap;
+    cursor: pointer; transition: color .15s, border-color .15s; white-space: nowrap;
   }
   .rp-btn-ghost:hover { color: #c8c6c1; border-color: #3a3a48; }
 
@@ -735,20 +663,16 @@ const CSS = `
     text-decoration: underline; padding: 0; margin-left: 10px;
   }
 
-  /* Spinner */
   .rp-spinner {
     display: inline-block; width: 11px; height: 11px;
-    border: 1.5px solid rgba(10,10,14,.3);
-    border-top-color: #0a0a0e;
+    border: 1.5px solid rgba(10,10,14,.3); border-top-color: #0a0a0e;
     border-radius: 50%; animation: spin .7s linear infinite;
     margin-right: 6px; flex-shrink: 0;
   }
 
-  /* Steps */
   .rp-step {
     display: flex; align-items: center; gap: 10;
-    padding: 6px 18px; opacity: .2; transition: opacity .3s;
-    position: relative;
+    padding: 6px 18px; opacity: .2; transition: opacity .3s; position: relative;
   }
   .rp-step.done   { opacity: .35; }
   .rp-step.active { opacity: 1; }
@@ -762,7 +686,6 @@ const CSS = `
     background: #c8a96e; animation: pulse 1.2s ease-in-out infinite;
   }
 
-  /* Tabs */
   .rp-tab {
     padding: 11px 18px; font-size: 11.5px;
     font-family: 'DM Mono', monospace; letter-spacing: .05em;
@@ -776,7 +699,6 @@ const CSS = `
   .rp-tab:hover  { color: #8e8e98; }
   .rp-tab.active { color: #c8a96e; border-bottom-color: #c8a96e; }
 
-  /* Section rows */
   .rp-sec-row {
     display: flex; align-items: baseline; gap: 12;
     padding: 10px 0; border-bottom: 1px solid #141418;
@@ -785,67 +707,4 @@ const CSS = `
   .rp-sec-num  { font-size: 10px; color: #2e2e3a; width: 22px; flex-shrink: 0; }
   .rp-sec-name { font-size: 12.5px; color: #a0a0b0; flex: 1; line-height: 1.4; }
   .rp-sec-wc   { font-size: 10px; color: #2e2e3a; white-space: nowrap; }
-
-  /* Markdown */
-  .rp-md { color: #c8c6c1; }
-  .rp-md h1 {
-    font-family: 'Fraunces', serif;
-    font-size: 22px; font-weight: 300; font-style: italic;
-    color: #e8e6e1; margin: 0 0 24px; letter-spacing: -.01em;
-    line-height: 1.3; border-bottom: 1px solid #1e1e24; padding-bottom: 16px;
-  }
-  .rp-md h2 {
-    font-family: 'Fraunces', serif;
-    font-size: 16px; font-weight: 500;
-    color: #c8a96e; margin: 28px 0 10px;
-    letter-spacing: .01em;
-  }
-  .rp-md h3 { font-size: 13px; font-weight: 500; color: #a0a08a; margin: 18px 0 6px; }
-  .rp-md p  { margin: .6rem 0; color: #9090a4; line-height: 1.8; }
-  .rp-md ul,.rp-md ol { padding-left: 1.4rem; margin: .5rem 0; }
-  .rp-md li { margin: .3rem 0; color: #9090a4; font-size: 13px; }
-  .rp-md strong { color: #c8c6c1; font-weight: 500; }
-  .rp-md em     { color: #c8a96e; font-style: italic; }
-  .rp-md code   {
-    font-family: 'DM Mono', monospace; font-size: 11.5px;
-    background: #13131a; border: 1px solid #1e1e28;
-    padding: 1px 6px; border-radius: 3px; color: #a8a8c8;
-  }
-  .rp-md pre {
-    background: #0a0a0d; border: 1px solid #1a1a20;
-    border-radius: 4px; padding: 14px 16px; overflow-x: auto; margin: 12px 0;
-  }
-  .rp-md pre code { background: none; border: none; padding: 0; color: #8080a0; }
-  .rp-md table {
-    border-collapse: collapse; width: 100%;
-    font-size: 12px; margin: 14px 0;
-    border: 1px solid #1e1e28;
-  }
-  .rp-md th,.rp-md td { border: 1px solid #1e1e28; padding: 8px 12px; text-align: left; }
-  .rp-md th { background: #13131a; color: #c8a96e; font-weight: 500; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
-  .rp-md td { color: #7070848; }
-  .rp-md blockquote {
-    border-left: 2px solid #c8a96e; padding: 2px 0 2px 14px;
-    margin: 10px 0; color: #5e5e70; font-style: italic;
-  }
-  .rp-md hr { border: none; border-top: 1px solid #1a1a22; margin: 24px 0; }
-  .rp-md a  { color: #c8a96e; text-decoration: none; }
-  .rp-md a:hover { text-decoration: underline; }
 `;
-
-// ── Minimal md → HTML for print ───────────────────────────────
-function mdToHtml(md) {
-    return md
-        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-        .replace(/^#### (.+)$/gm, "<h4>$1</h4>")
-        .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-        .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-        .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-        .replace(/\*(.+?)\*/g, "<em>$1</em>")
-        .replace(/`(.+?)`/g, "<code>$1</code>")
-        .replace(/^- (.+)$/gm, "<li>$1</li>")
-        .replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
-        .replace(/\n{2,}/g, "</p><p>")
-        .replace(/^(?!<[hul])(.+)$/gm, "<p>$1</p>");
-}

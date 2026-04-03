@@ -1165,11 +1165,9 @@ def generate_report_endpoint():
         filename:   str,           required
         query_hint: str,           optional — report focus/topic
         sections:   list[str],     optional — custom section names ([] = auto-discover)
-        format:     "both"|"markdown"|"latex"   default "both"
     }
 
     Response: {
-        markdown: str,
         latex:    str,
         sections: [{name, text}, ...],
         filename: str
@@ -1199,14 +1197,10 @@ def generate_report_endpoint():
         return jsonify({"error": str(e)}), 500
 
     query_hint = data.get("query_hint", "").strip()
-    fmt        = data.get("format", "both")
 
     # FIX: treat missing, null, and [] all as "auto-discover from PDF"
-    # Only pass sections to generate_report when the caller actually filled them in
     raw_secs    = data.get("sections") or []
     custom_secs = [s.strip() for s in raw_secs if isinstance(s, str) and s.strip()]
-    # None  → triggers auto-discovery in report_graph
-    # [...] → uses the provided list directly
     sections_arg = custom_secs if custom_secs else None
 
     print(f"\n[REPORT] Starting report for '{filename}' | focus: '{query_hint or 'auto'}' | "
@@ -1223,15 +1217,12 @@ def generate_report_endpoint():
         traceback.print_exc()
         return jsonify({"error": f"Report generation failed: {e}"}), 500
 
-    response = {"filename": filename, "sections": result["sections"]}
+    return jsonify({
+        "filename": filename,
+        "latex":    result["latex"],
+        "sections": result["sections"],
+    })
 
-    if fmt in ("both", "markdown"):
-        response["markdown"] = result["markdown"]
-    if fmt in ("both", "latex"):
-        response["latex"] = result["latex"]
-
-    return jsonify(response)
- 
 @app.route("/report-sections", methods=["GET"])
 def report_sections():
     """GET /report-sections — returns default section list."""
