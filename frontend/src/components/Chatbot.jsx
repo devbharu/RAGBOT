@@ -43,12 +43,12 @@ const UploadZone = ({ onUpload, uploading, uploadProgress }) => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '14px',
-                border: `1.5px dashed ${dragging ? '#6366f1' : '#2e2e38'}`,
-                borderRadius: '14px',
+                border: `1.5px dashed ${dragging ? '#c8a96e' : '#2a2a30'}`,
+                borderRadius: '10px',
                 padding: '36px 24px',
                 cursor: uploading ? 'wait' : 'pointer',
                 transition: 'all 0.2s ease',
-                background: dragging ? 'rgba(99,102,241,0.06)' : 'rgba(18,18,24,0.6)',
+                background: dragging ? 'rgba(200,169,110,0.05)' : 'rgba(13,13,16,0.8)',
                 opacity: uploading ? 0.85 : 1,
                 pointerEvents: uploading ? 'none' : 'auto',
             }}
@@ -59,28 +59,28 @@ const UploadZone = ({ onUpload, uploading, uploadProgress }) => {
                 style={{ display: 'none' }}
             />
             <div style={{
-                width: 48, height: 48, borderRadius: 12,
-                background: dragging ? 'rgba(99,102,241,0.18)' : 'rgba(40,40,52,0.9)',
+                width: 44, height: 44, borderRadius: 10,
+                background: dragging ? 'rgba(200,169,110,0.12)' : '#17171b',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 transition: 'all 0.2s',
-                border: `1px solid ${dragging ? 'rgba(99,102,241,0.4)' : '#2e2e38'}`,
+                border: `1px solid ${dragging ? 'rgba(200,169,110,0.4)' : '#252530'}`,
             }}>
                 {uploading
-                    ? <Loader2 size={22} style={{ color: '#6366f1', animation: 'spin 1s linear infinite' }} />
-                    : <FileUp size={22} style={{ color: dragging ? '#818cf8' : '#52525b' }} />
+                    ? <Loader2 size={20} style={{ color: '#c8a96e', animation: 'spin 1s linear infinite' }} />
+                    : <FileUp size={20} style={{ color: dragging ? '#c8a96e' : '#3e3e48' }} />
                 }
             </div>
             <div style={{ textAlign: 'center' }}>
-                <p style={{ fontSize: 13.5, fontWeight: 500, color: '#e4e4e7', margin: 0, letterSpacing: '-0.01em' }}>
+                <p style={{ fontSize: 13, fontWeight: 400, color: '#c8c6c1', margin: 0, fontFamily: "'DM Mono', monospace", letterSpacing: '0.01em' }}>
                     {uploading ? uploadProgress : dragging ? 'Drop to upload' : 'Drop file here'}
                 </p>
-                <p style={{ fontSize: 12, color: '#52525b', marginTop: 3 }}>
+                <p style={{ fontSize: 11.5, color: '#3e3e48', marginTop: 4, fontFamily: "'DM Mono', monospace", letterSpacing: '0.02em' }}>
                     {uploading ? 'Processing… this may take a moment' : 'click to browse · PDF & TXT supported'}
                 </p>
             </div>
             {uploading && (
-                <div style={{ width: '100%', height: 2, background: '#1e1e2a', borderRadius: 99, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', background: 'linear-gradient(90deg,#6366f1,#818cf8)', borderRadius: 99, animation: 'shimmer 1.5s ease-in-out infinite', width: '100%' }} />
+                <div style={{ width: '100%', height: 1, background: '#1e1e22', borderRadius: 99, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', background: 'linear-gradient(90deg, #c8a96e, #d4b880)', borderRadius: 99, animation: 'shimmer 1.5s ease-in-out infinite', width: '100%' }} />
                 </div>
             )}
         </div>
@@ -95,39 +95,40 @@ const UploadPanel = ({ onUpload, uploading, uploadProgress, onClose, files, sele
         style={{
             position: 'absolute', inset: 0, zIndex: 50,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)',
+            background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)',
         }}
         onClick={() => !uploading && onClose()}
     >
         <div
             style={{
-                position: 'relative', width: '100%', maxWidth: 420,
+                position: 'relative', width: '100%', maxWidth: 400,
                 margin: '0 16px',
-                background: '#111118',
-                border: '1px solid #1f1f2e',
-                borderRadius: 20, padding: 22,
+                background: '#0e0e10',
+                border: '1px solid #1e1e22',
+                borderRadius: 12, padding: 22,
                 display: 'flex', flexDirection: 'column', gap: 18,
-                boxShadow: '0 32px 80px rgba(0,0,0,0.7)',
+                boxShadow: '0 32px 80px rgba(0,0,0,0.8)',
                 animation: 'modalIn 0.22s cubic-bezier(0.34,1.56,0.64,1)',
+                fontFamily: "'DM Mono', monospace",
             }}
             onClick={e => e.stopPropagation()}
         >
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                 <div>
-                    <h2 style={{ fontSize: 14, fontWeight: 600, color: '#f4f4f5', margin: 0, letterSpacing: '-0.02em' }}>Upload Document</h2>
-                    <p style={{ fontSize: 11.5, color: '#42424e', marginTop: 3, letterSpacing: '0.01em' }}>PDF or TXT · indexed automatically</p>
+                    <h2 style={{ fontSize: 14, fontWeight: 500, color: '#e8e6e1', margin: 0, fontFamily: "'Fraunces', serif", fontStyle: 'italic' }}>Upload Document</h2>
+                    <p style={{ fontSize: 11, color: '#3e3e48', marginTop: 4, letterSpacing: '0.04em', textTransform: 'uppercase' }}>PDF or TXT · indexed automatically</p>
                 </div>
                 {!uploading && (
                     <button onClick={onClose} style={{
-                        padding: 6, borderRadius: 9, background: 'transparent',
-                        border: 'none', cursor: 'pointer', color: '#52525b',
+                        padding: 6, borderRadius: 6, background: 'transparent',
+                        border: '1px solid #252530', cursor: 'pointer', color: '#3e3e48',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         transition: 'all 0.15s',
                     }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#1e1e2a'; e.currentTarget.style.color = '#e4e4e7'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#52525b'; }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#17171b'; e.currentTarget.style.color = '#c8c6c1'; e.currentTarget.style.borderColor = '#3a3a48'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#3e3e48'; e.currentTarget.style.borderColor = '#252530'; }}
                     >
-                        <X size={15} />
+                        <X size={13} />
                     </button>
                 )}
             </div>
@@ -136,18 +137,18 @@ const UploadPanel = ({ onUpload, uploading, uploadProgress, onClose, files, sele
 
             {!uploading && files.length > 0 && (
                 <div>
-                    <p style={{ fontSize: 10.5, color: '#42424e', fontWeight: 600, letterSpacing: '0.09em', textTransform: 'uppercase', marginBottom: 8 }}>
+                    <p style={{ fontSize: 10, color: '#3e3e48', fontWeight: 400, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
                         Indexed documents
                     </p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 200, overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 200, overflowY: 'auto' }}>
                         {files.map(f => (
                             <div
                                 key={f.name}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: 8,
-                                    padding: '7px 10px', borderRadius: 10,
-                                    background: selectedFile === f.name ? 'rgba(99,102,241,0.12)' : 'transparent',
-                                    border: `1px solid ${selectedFile === f.name ? 'rgba(99,102,241,0.25)' : 'transparent'}`,
+                                    padding: '7px 10px', borderRadius: 6,
+                                    background: selectedFile === f.name ? 'rgba(200,169,110,0.08)' : 'transparent',
+                                    border: `1px solid ${selectedFile === f.name ? 'rgba(200,169,110,0.2)' : 'transparent'}`,
                                     transition: 'all 0.15s',
                                 }}
                             >
@@ -157,33 +158,34 @@ const UploadPanel = ({ onUpload, uploading, uploadProgress, onClose, files, sele
                                         display: 'flex', alignItems: 'center', gap: 8,
                                         flex: 1, textAlign: 'left',
                                         background: 'transparent', border: 'none',
-                                        cursor: 'pointer', fontSize: 12.5,
-                                        color: selectedFile === f.name ? '#818cf8' : '#a1a1aa',
-                                        fontFamily: 'inherit',
+                                        cursor: 'pointer', fontSize: 12,
+                                        color: selectedFile === f.name ? '#c8a96e' : '#6e6e78',
+                                        fontFamily: "'DM Mono', monospace",
+                                        letterSpacing: '0.01em',
                                     }}
                                 >
-                                    <FileText size={12} style={{ flexShrink: 0 }} />
+                                    <FileText size={11} style={{ flexShrink: 0 }} />
                                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
                                     {f.status === 'indexing' && (
-                                        <span style={{ fontSize: 10, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-                                            <Clock size={10} />indexing
+                                        <span style={{ fontSize: 10, color: '#8a7040', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                                            <Clock size={9} />indexing
                                         </span>
                                     )}
-                                    {f.status === 'ready' && selectedFile === f.name && <CheckCircle size={12} style={{ flexShrink: 0, color: '#6366f1' }} />}
+                                    {f.status === 'ready' && selectedFile === f.name && <CheckCircle size={11} style={{ flexShrink: 0, color: '#c8a96e' }} />}
                                 </button>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onReindex(f.name); }}
                                     title="Re-index file"
                                     style={{
-                                        padding: 5, borderRadius: 7, background: 'transparent',
-                                        border: 'none', cursor: 'pointer', color: '#42424e',
+                                        padding: 5, borderRadius: 5, background: 'transparent',
+                                        border: '1px solid transparent', cursor: 'pointer', color: '#3e3e48',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                         transition: 'all 0.15s', flexShrink: 0,
                                     }}
-                                    onMouseEnter={e => { e.currentTarget.style.background = '#1e1e2a'; e.currentTarget.style.color = '#a1a1aa'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#42424e'; }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = '#17171b'; e.currentTarget.style.color = '#6e6e78'; e.currentTarget.style.borderColor = '#252530'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#3e3e48'; e.currentTarget.style.borderColor = 'transparent'; }}
                                 >
-                                    <RefreshCw size={11} />
+                                    <RefreshCw size={10} />
                                 </button>
                             </div>
                         ))}
@@ -221,8 +223,9 @@ const PageImageViewer = ({ images, filename, onClose }) => {
         <div
             style={{
                 position: 'fixed', inset: 0, zIndex: 200,
-                background: 'rgba(0,0,0,0.94)', backdropFilter: 'blur(14px)',
+                background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(14px)',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                fontFamily: "'DM Mono', monospace",
             }}
             onClick={onClose}
         >
@@ -235,34 +238,34 @@ const PageImageViewer = ({ images, filename, onClose }) => {
                 onClick={e => e.stopPropagation()}
             >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 12, color: '#52525b', fontWeight: 500 }}>
+                    <span style={{ fontSize: 11, color: '#4e4e58', letterSpacing: '0.04em' }}>
                         {filename} · Page {images[current]?.page}
-                        {images.length > 1 && <span style={{ color: '#3a3a45' }}> ({current + 1}/{images.length})</span>}
+                        {images.length > 1 && <span style={{ color: '#2e2e3a' }}> ({current + 1}/{images.length})</span>}
                     </span>
                     <button
                         onClick={onClose}
-                        style={{ padding: 6, borderRadius: 9, background: '#1e1e2a', border: 'none', cursor: 'pointer', color: '#a1a1aa', display: 'flex' }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#2a2a38'; e.currentTarget.style.color = '#f4f4f5'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = '#1e1e2a'; e.currentTarget.style.color = '#a1a1aa'; }}
+                        style={{ padding: 6, borderRadius: 6, background: '#17171b', border: '1px solid #252530', cursor: 'pointer', color: '#6e6e78', display: 'flex' }}
+                        onMouseEnter={e => { e.currentTarget.style.color = '#e8e6e1'; e.currentTarget.style.borderColor = '#3a3a48'; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = '#6e6e78'; e.currentTarget.style.borderColor = '#252530'; }}
                     >
-                        <X size={14} />
+                        <X size={13} />
                     </button>
                 </div>
 
                 <div style={{
-                    position: 'relative', borderRadius: 12, overflow: 'hidden',
-                    background: '#0d0d12', border: '1px solid #1e1e2a',
+                    position: 'relative', borderRadius: 8, overflow: 'hidden',
+                    background: '#0a0a0d', border: '1px solid #1a1a20',
                     maxHeight: '75vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     minWidth: 200, minHeight: 150,
                 }}>
                     {!loaded[current] && !errors[current] && (
                         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Loader2 size={24} style={{ color: '#3a3a45', animation: 'spin 1s linear infinite' }} />
+                            <Loader2 size={22} style={{ color: '#3a3a48', animation: 'spin 1s linear infinite' }} />
                         </div>
                     )}
                     {errors[current] ? (
-                        <div style={{ padding: '24px 32px', color: '#52525b', fontSize: 13, textAlign: 'center' }}>
-                            <Image size={24} style={{ display: 'block', margin: '0 auto 8px', opacity: 0.4 }} />
+                        <div style={{ padding: '24px 32px', color: '#3e3e48', fontSize: 12, textAlign: 'center', letterSpacing: '0.02em' }}>
+                            <Image size={22} style={{ display: 'block', margin: '0 auto 8px', opacity: 0.3 }} />
                             Image not available for page {images[current]?.page}
                         </div>
                     ) : (
@@ -284,13 +287,13 @@ const PageImageViewer = ({ images, filename, onClose }) => {
                 {images.length > 1 && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <button onClick={prev} disabled={current === 0} style={{
-                            padding: '7px 14px', borderRadius: 9, background: '#111118',
-                            border: '1px solid #1e1e2a', color: current === 0 ? '#2a2a38' : '#a1a1aa',
+                            padding: '6px 14px', borderRadius: 5, background: '#13131a',
+                            border: '1px solid #252530', color: current === 0 ? '#2a2a30' : '#6e6e78',
                             cursor: current === 0 ? 'not-allowed' : 'pointer',
-                            display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
-                            fontFamily: 'inherit', transition: 'all 0.15s',
+                            display: 'flex', alignItems: 'center', gap: 5, fontSize: 11,
+                            fontFamily: "'DM Mono', monospace", transition: 'all 0.15s', letterSpacing: '0.03em',
                         }}>
-                            <ChevronLeft size={13} /> Prev
+                            <ChevronLeft size={12} /> Prev
                         </button>
                         <div style={{ display: 'flex', gap: 4 }}>
                             {images.map((img, i) => (
@@ -298,12 +301,12 @@ const PageImageViewer = ({ images, filename, onClose }) => {
                                     key={img.page}
                                     onClick={() => setCurrent(i)}
                                     style={{
-                                        width: 28, height: 28, borderRadius: 7,
-                                        background: i === current ? '#6366f1' : '#111118',
-                                        border: `1px solid ${i === current ? '#6366f1' : '#1e1e2a'}`,
-                                        color: i === current ? 'white' : '#52525b',
-                                        fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                                        fontFamily: 'inherit', transition: 'all 0.15s',
+                                        width: 26, height: 26, borderRadius: 5,
+                                        background: i === current ? '#c8a96e' : '#13131a',
+                                        border: `1px solid ${i === current ? '#c8a96e' : '#252530'}`,
+                                        color: i === current ? '#0a0a0e' : '#4e4e58',
+                                        fontSize: 10, fontWeight: 500, cursor: 'pointer',
+                                        fontFamily: "'DM Mono', monospace", transition: 'all 0.15s',
                                     }}
                                 >
                                     {img.page}
@@ -311,14 +314,14 @@ const PageImageViewer = ({ images, filename, onClose }) => {
                             ))}
                         </div>
                         <button onClick={next} disabled={current === images.length - 1} style={{
-                            padding: '7px 14px', borderRadius: 9, background: '#111118',
-                            border: '1px solid #1e1e2a',
-                            color: current === images.length - 1 ? '#2a2a38' : '#a1a1aa',
+                            padding: '6px 14px', borderRadius: 5, background: '#13131a',
+                            border: '1px solid #252530',
+                            color: current === images.length - 1 ? '#2a2a30' : '#6e6e78',
                             cursor: current === images.length - 1 ? 'not-allowed' : 'pointer',
-                            display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
-                            fontFamily: 'inherit', transition: 'all 0.15s',
+                            display: 'flex', alignItems: 'center', gap: 5, fontSize: 11,
+                            fontFamily: "'DM Mono', monospace", transition: 'all 0.15s', letterSpacing: '0.03em',
                         }}>
-                            Next <ChevronRight size={13} />
+                            Next <ChevronRight size={12} />
                         </button>
                     </div>
                 )}
@@ -336,7 +339,7 @@ const ImageStrip = ({ images, filename, onOpenViewer }) => {
         <div style={{
             display: 'flex', gap: 8, flexWrap: 'wrap',
             marginTop: 12, paddingTop: 12,
-            borderTop: '1px solid #1a1a24',
+            borderTop: '1px solid #1a1a20',
         }}>
             {images.map((img, i) => (
                 <button
@@ -344,21 +347,22 @@ const ImageStrip = ({ images, filename, onOpenViewer }) => {
                     onClick={() => onOpenViewer(images, i)}
                     style={{
                         position: 'relative',
-                        width: 72, height: 72, borderRadius: 10, overflow: 'hidden',
-                        background: '#0d0d12', border: '1px solid #1e1e2a',
+                        width: 68, height: 68, borderRadius: 7, overflow: 'hidden',
+                        background: '#0a0a0d', border: '1px solid #1a1a20',
                         cursor: 'pointer', padding: 0,
                         transition: 'all 0.2s', flexShrink: 0,
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.transform = 'scale(1.06)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e1e2a'; e.currentTarget.style.transform = 'scale(1)'; }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#c8a96e'; e.currentTarget.style.transform = 'scale(1.05)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#1a1a20'; e.currentTarget.style.transform = 'scale(1)'; }}
                     title={`Page ${img.page}`}
                 >
                     <PageThumb src={`${API}${img.url}`} />
                     <span style={{
-                        position: 'absolute', bottom: 4, right: 5,
-                        fontSize: 9, fontWeight: 700, color: 'white',
-                        background: 'rgba(0,0,0,0.75)', borderRadius: 4,
+                        position: 'absolute', bottom: 3, right: 4,
+                        fontSize: 9, fontWeight: 500, color: '#e8e6e1',
+                        background: 'rgba(0,0,0,0.8)', borderRadius: 3,
                         padding: '1px 4px', lineHeight: 1.4,
+                        fontFamily: "'DM Mono', monospace",
                     }}>
                         p.{img.page}
                     </span>
@@ -374,13 +378,13 @@ const PageThumb = ({ src }) => {
     return (
         <>
             {!loaded && !error && (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d0d12' }}>
-                    <Loader2 size={14} style={{ color: '#2e2e38', animation: 'spin 1s linear infinite' }} />
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a0d' }}>
+                    <Loader2 size={13} style={{ color: '#2a2a30', animation: 'spin 1s linear infinite' }} />
                 </div>
             )}
             {error ? (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d0d12' }}>
-                    <Image size={14} style={{ color: '#2e2e38', opacity: 0.5 }} />
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a0d' }}>
+                    <Image size={13} style={{ color: '#2a2a30', opacity: 0.5 }} />
                 </div>
             ) : (
                 <img
@@ -419,37 +423,38 @@ const DocThumbnailsSidebar = ({ filename, onOpen, open, onClose }) => {
             )}
             <div style={{
                 position: 'absolute', right: 0, top: 0, bottom: 0,
-                width: open ? 176 : 0,
+                width: open ? 168 : 0,
                 overflow: 'hidden',
-                background: '#0a0a10',
-                borderLeft: open ? '1px solid #16161f' : 'none',
+                background: '#0a0a0d',
+                borderLeft: open ? '1px solid #1a1a20' : 'none',
                 transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
                 zIndex: 40, flexShrink: 0,
                 display: 'flex', flexDirection: 'column',
+                fontFamily: "'DM Mono', monospace",
             }}>
                 <div style={{
                     padding: '11px 12px 8px',
-                    borderBottom: '1px solid #16161f',
+                    borderBottom: '1px solid #1a1a20',
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     flexShrink: 0,
                 }}>
-                    <span style={{ fontSize: 10, color: '#42424e', fontWeight: 600, letterSpacing: '0.09em', textTransform: 'uppercase' }}>
+                    <span style={{ fontSize: 10, color: '#3e3e48', fontWeight: 400, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                         Pages
                     </span>
-                    <button onClick={onClose} style={{ padding: 4, borderRadius: 6, background: 'transparent', border: 'none', cursor: 'pointer', color: '#42424e', display: 'flex' }}
-                        onMouseEnter={e => e.currentTarget.style.color = '#a1a1aa'}
-                        onMouseLeave={e => e.currentTarget.style.color = '#42424e'}>
-                        <X size={12} />
+                    <button onClick={onClose} style={{ padding: 4, borderRadius: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: '#3e3e48', display: 'flex' }}
+                        onMouseEnter={e => e.currentTarget.style.color = '#6e6e78'}
+                        onMouseLeave={e => e.currentTarget.style.color = '#3e3e48'}>
+                        <X size={11} />
                     </button>
                 </div>
-                <div style={{ flex: 1, overflowY: 'auto', padding: '10px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '10px', display: 'flex', flexDirection: 'column', gap: 7 }}>
                     {loading && (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 0' }}>
-                            <Loader2 size={18} style={{ color: '#42424e', animation: 'spin 1s linear infinite' }} />
+                            <Loader2 size={16} style={{ color: '#3e3e48', animation: 'spin 1s linear infinite' }} />
                         </div>
                     )}
                     {!loading && pages.length === 0 && (
-                        <p style={{ fontSize: 11, color: '#2e2e38', textAlign: 'center', padding: '20px 0' }}>No page images</p>
+                        <p style={{ fontSize: 11, color: '#2e2e38', textAlign: 'center', padding: '20px 0', letterSpacing: '0.02em' }}>No page images</p>
                     )}
                     {pages.map((pg, i) => (
                         <button
@@ -457,22 +462,23 @@ const DocThumbnailsSidebar = ({ filename, onOpen, open, onClose }) => {
                             onClick={() => { setViewerImages(pages); }}
                             style={{
                                 position: 'relative', width: '100%', paddingBottom: '133%',
-                                borderRadius: 8, overflow: 'hidden',
-                                background: '#111118', border: '1px solid #1e1e2a',
+                                borderRadius: 6, overflow: 'hidden',
+                                background: '#13131a', border: '1px solid #1e1e22',
                                 cursor: 'pointer', padding: 0, flexShrink: 0,
                                 transition: 'border-color 0.15s',
                             }}
-                            onMouseEnter={e => e.currentTarget.style.borderColor = '#6366f1'}
-                            onMouseLeave={e => e.currentTarget.style.borderColor = '#1e1e2a'}
+                            onMouseEnter={e => e.currentTarget.style.borderColor = '#c8a96e'}
+                            onMouseLeave={e => e.currentTarget.style.borderColor = '#1e1e22'}
                         >
                             <div style={{ position: 'absolute', inset: 0 }}>
                                 <PageThumb src={`${API}${pg.url}`} />
                             </div>
                             <span style={{
                                 position: 'absolute', bottom: 4, left: '50%', transform: 'translateX(-50%)',
-                                fontSize: 9, fontWeight: 700, color: 'white',
-                                background: 'rgba(0,0,0,0.75)', borderRadius: 4,
+                                fontSize: 9, fontWeight: 500, color: '#e8e6e1',
+                                background: 'rgba(0,0,0,0.8)', borderRadius: 3,
                                 padding: '1px 6px', whiteSpace: 'nowrap',
+                                fontFamily: "'DM Mono', monospace",
                             }}>
                                 {pg.page}
                             </span>
@@ -496,7 +502,7 @@ function normaliseContent(text) {
 }
 
 /* ─────────────────────────────────────────
-   Enhanced Markdown renderer — full-width tables
+   Markdown renderer — editorial terminal style
 ───────────────────────────────────────── */
 const MarkdownMessage = ({ content }) => (
     <ReactMarkdown
@@ -505,74 +511,53 @@ const MarkdownMessage = ({ content }) => (
         components={{
             div: ({ className, children, ...props }) => {
                 if (className?.includes('math-display')) return (
-                    <div style={{ margin: '14px 0', padding: '16px 20px', background: '#0a0a14', border: '1px solid rgba(99,102,241,0.18)', borderRadius: 10, overflowX: 'auto', textAlign: 'center' }} {...props}>{children}</div>
+                    <div style={{ margin: '14px 0', padding: '14px 18px', background: '#0a0a0d', border: '1px solid #1e1e28', borderRadius: 6, overflowX: 'auto', textAlign: 'center' }} {...props}>{children}</div>
                 );
                 return <div className={className} {...props}>{children}</div>;
             },
             span: ({ className, children, ...props }) => {
                 if (className?.includes('math-inline')) return (
-                    <span style={{ padding: '2px 6px', borderRadius: 5, background: 'rgba(99,102,241,0.14)', color: '#a5b4fc', fontFamily: 'monospace', fontSize: '0.875em' }} {...props}>{children}</span>
+                    <span style={{ padding: '2px 6px', borderRadius: 4, background: 'rgba(200,169,110,0.1)', color: '#c8a96e', fontFamily: "'DM Mono', monospace", fontSize: '0.875em' }} {...props}>{children}</span>
                 );
                 return <span className={className} {...props}>{children}</span>;
             },
 
             table: ({ ...props }) => (
                 <div style={{
-                    overflowX: 'auto',
-                    margin: '16px 0',
-                    borderRadius: 10,
-                    border: '1px solid #1e1e2a',
-                    boxShadow: '0 1px 12px rgba(0,0,0,0.25)',
+                    overflowX: 'auto', margin: '14px 0',
+                    borderRadius: 6, border: '1px solid #1e1e22',
                     width: '100%',
                 }}>
                     <table style={{
-                        borderCollapse: 'collapse',
-                        fontSize: 13,
-                        width: '100%',
-                        tableLayout: 'fixed',
-                        whiteSpace: 'normal',
-                        wordBreak: 'break-word',
+                        borderCollapse: 'collapse', fontSize: 12.5,
+                        width: '100%', tableLayout: 'fixed',
+                        whiteSpace: 'normal', wordBreak: 'break-word',
+                        fontFamily: "'DM Mono', monospace",
                     }} {...props} />
                 </div>
             ),
-            thead: ({ ...props }) => (
-                <thead style={{ background: '#13131c' }} {...props} />
-            ),
+            thead: ({ ...props }) => <thead style={{ background: '#13131a' }} {...props} />,
             th: ({ ...props }) => (
                 <th style={{
-                    border: 'none',
-                    borderBottom: '1px solid #1e1e2a',
-                    padding: '11px 16px',
-                    textAlign: 'left',
-                    fontWeight: 600,
-                    color: '#c4c4d4',
-                    fontSize: 11.5,
-                    letterSpacing: '0.06em',
-                    textTransform: 'uppercase',
-                    background: '#13131c',
-                    whiteSpace: 'normal',
-                    wordBreak: 'break-word',
-                    lineHeight: 1.5,
+                    border: 'none', borderBottom: '1px solid #1e1e22',
+                    padding: '10px 14px', textAlign: 'left',
+                    fontWeight: 400, color: '#6e6e78',
+                    fontSize: 10, letterSpacing: '0.07em', textTransform: 'uppercase',
+                    background: '#13131a', whiteSpace: 'normal', wordBreak: 'break-word',
                 }} {...props} />
             ),
             td: ({ ...props }) => (
                 <td style={{
-                    border: 'none',
-                    borderBottom: '1px solid #14141c',
-                    padding: '10px 16px',
-                    color: '#b0b0c4',
-                    fontSize: 13,
-                    lineHeight: 1.6,
-                    background: 'transparent',
-                    whiteSpace: 'normal',
-                    wordBreak: 'break-word',
-                    verticalAlign: 'top',
+                    border: 'none', borderBottom: '1px solid #141418',
+                    padding: '9px 14px', color: '#8888a8',
+                    fontSize: 12.5, lineHeight: 1.6, background: 'transparent',
+                    whiteSpace: 'normal', wordBreak: 'break-word', verticalAlign: 'top',
                 }} {...props} />
             ),
             tr: ({ ...props }) => (
                 <tr
                     style={{ transition: 'background 0.12s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.04)'}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(200,169,110,0.03)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     {...props}
                 />
@@ -580,28 +565,68 @@ const MarkdownMessage = ({ content }) => (
             tbody: ({ ...props }) => <tbody {...props} />,
 
             code: ({ inline, children, ...props }) => inline
-                ? <code style={{ background: 'rgba(99,102,241,0.12)', padding: '2px 7px', borderRadius: 5, color: '#a5b4fc', fontSize: '0.84em', fontFamily: '"JetBrains Mono", "Fira Code", monospace' }} {...props}>{children}</code>
-                : <pre style={{ background: '#0d0d14', border: '1px solid #1a1a24', borderRadius: 10, padding: '15px 18px', overflowX: 'auto', margin: '12px 0' }}>
-                    <code style={{ color: '#86efac', fontSize: '0.81em', fontFamily: '"JetBrains Mono", "Fira Code", monospace', lineHeight: 1.75 }} {...props}>{children}</code>
+                ? <code style={{ background: 'rgba(200,169,110,0.08)', padding: '2px 7px', borderRadius: 4, color: '#c8a96e', fontSize: '0.84em', fontFamily: "'DM Mono', monospace" }} {...props}>{children}</code>
+                : <pre style={{ background: '#0a0a0d', border: '1px solid #1a1a20', borderRadius: 6, padding: '14px 16px', overflowX: 'auto', margin: '12px 0' }}>
+                    <code style={{ color: '#8888a8', fontSize: '0.8em', fontFamily: "'DM Mono', monospace", lineHeight: 1.75 }} {...props}>{children}</code>
                 </pre>,
 
-            h1: ({ ...props }) => <h1 style={{ fontSize: 19, fontWeight: 700, color: '#f4f4f5', margin: '18px 0 6px', letterSpacing: '-0.02em' }} {...props} />,
-            h2: ({ ...props }) => <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e4e4e7', margin: '14px 0 5px', letterSpacing: '-0.01em' }} {...props} />,
-            h3: ({ ...props }) => <h3 style={{ fontSize: 14.5, fontWeight: 600, color: '#d4d4d8', margin: '12px 0 4px' }} {...props} />,
+            h1: ({ ...props }) => <h1 style={{ fontSize: 17, fontWeight: 300, color: '#e8e6e1', margin: '18px 0 6px', fontFamily: "'Fraunces', serif", fontStyle: 'italic' }} {...props} />,
+            h2: ({ ...props }) => <h2 style={{ fontSize: 14, fontWeight: 300, color: '#c8c6c1', margin: '14px 0 5px', fontFamily: "'Fraunces', serif", fontStyle: 'italic' }} {...props} />,
+            h3: ({ ...props }) => <h3 style={{ fontSize: 12.5, fontWeight: 400, color: '#a0a0b0', margin: '12px 0 4px', fontFamily: "'DM Mono', monospace", letterSpacing: '0.05em', textTransform: 'uppercase' }} {...props} />,
             ul: ({ ...props }) => <ul style={{ paddingLeft: 18, margin: '8px 0', display: 'flex', flexDirection: 'column', gap: 4 }} {...props} />,
             ol: ({ ...props }) => <ol style={{ paddingLeft: 18, margin: '8px 0', display: 'flex', flexDirection: 'column', gap: 4 }} {...props} />,
-            li: ({ ...props }) => <li style={{ color: '#a0a0b8', lineHeight: 1.7, fontSize: 13.5 }} {...props} />,
-            p: ({ ...props }) => <p style={{ margin: '0 0 10px', color: '#c8c8dc', lineHeight: 1.75, fontSize: 13.5 }} {...props} />,
-            strong: ({ ...props }) => <strong style={{ fontWeight: 600, color: '#e8e8f8' }} {...props} />,
-            em: ({ ...props }) => <em style={{ fontStyle: 'italic', color: '#9090a8' }} {...props} />,
-            blockquote: ({ ...props }) => <blockquote style={{ borderLeft: '3px solid #6366f1', paddingLeft: 14, margin: '12px 0', color: '#6060a0', fontStyle: 'italic', background: 'rgba(99,102,241,0.05)', borderRadius: '0 8px 8px 0', padding: '10px 14px' }} {...props} />,
-            a: ({ ...props }) => <a style={{ color: '#818cf8', textDecoration: 'underline', textUnderlineOffset: 3 }} target="_blank" rel="noopener noreferrer" {...props} />,
-            hr: ({ ...props }) => <hr style={{ border: 'none', borderTop: '1px solid #1a1a24', margin: '16px 0' }} {...props} />,
+            li: ({ ...props }) => <li style={{ color: '#7070888', lineHeight: 1.7, fontSize: 13 }} {...props} />,
+            p: ({ ...props }) => <p style={{ margin: '0 0 10px', color: '#8888a8', lineHeight: 1.75, fontSize: 13 }} {...props} />,
+            strong: ({ ...props }) => <strong style={{ fontWeight: 500, color: '#c8c6c1' }} {...props} />,
+            em: ({ ...props }) => <em style={{ fontStyle: 'italic', color: '#6e6e78', fontFamily: "'Fraunces', serif" }} {...props} />,
+            blockquote: ({ ...props }) => <blockquote style={{ borderLeft: '2px solid #c8a96e', paddingLeft: 14, margin: '12px 0', color: '#6e6e78', fontStyle: 'italic', background: 'rgba(200,169,110,0.04)', borderRadius: '0 6px 6px 0', padding: '10px 14px' }} {...props} />,
+            a: ({ ...props }) => <a style={{ color: '#c8a96e', textDecoration: 'underline', textUnderlineOffset: 3 }} target="_blank" rel="noopener noreferrer" {...props} />,
+            hr: ({ ...props }) => <hr style={{ border: 'none', borderTop: '1px solid #1a1a20', margin: '16px 0' }} {...props} />,
         }}
     >
         {normaliseContent(content)}
     </ReactMarkdown>
 );
+
+/* ─────────────────────────────────────────
+   Think Block
+───────────────────────────────────────── */
+const ThinkBlock = ({ thinking, done }) => {
+    const [open, setOpen] = useState(false);
+    const secs = Math.max(1, Math.round(thinking.length / 200));
+    return (
+        <div style={{ marginBottom: 10 }}>
+            <button
+                onClick={() => setOpen(o => !o)}
+                style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: 'transparent', border: 'none',
+                    cursor: 'pointer', padding: '3px 0',
+                    color: done ? '#6e6e78' : '#8a7040',
+                    fontSize: 11, fontFamily: "'DM Mono', monospace",
+                    letterSpacing: '0.03em',
+                }}
+            >
+                {!done
+                    ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite', color: '#c8a96e' }} />
+                    : <span style={{ fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+                }
+                {done ? `Thought for ${secs}s` : 'Thinking…'}
+            </button>
+            {open && done && (
+                <div style={{
+                    marginTop: 6, padding: '10px 14px',
+                    background: '#0a0a0d', border: '1px solid #1e1e22',
+                    borderRadius: 6, fontSize: 11.5, color: '#4e4e58',
+                    fontFamily: "'DM Mono', monospace", lineHeight: 1.7,
+                    whiteSpace: 'pre-wrap',
+                }}>
+                    {thinking}
+                </div>
+            )}
+        </div>
+    );
+};
 
 /* ─────────────────────────────────────────
    Typing dots
@@ -610,8 +635,8 @@ const TypingDots = () => (
     <div style={{ display: 'flex', gap: 5, alignItems: 'center', padding: '5px 0' }}>
         {[0, 140, 280].map((delay, i) => (
             <span key={i} style={{
-                width: 6, height: 6, borderRadius: '50%',
-                background: '#42424e',
+                width: 5, height: 5, borderRadius: '50%',
+                background: '#3a3a48',
                 animation: `bounce 1.2s ease-in-out ${delay}ms infinite`,
                 display: 'block',
             }} />
@@ -624,27 +649,29 @@ const TypingDots = () => (
 ───────────────────────────────────────── */
 const FileOption = ({ name, status, selected, onSelect }) => (
     <button
-        className="file-option"
+        className="cb-file-option"
         onClick={onSelect}
         style={{
             width: '100%', textAlign: 'left',
-            padding: '9px 14px', fontSize: 12.5,
-            display: 'flex', alignItems: 'center', gap: 9,
-            background: selected ? 'rgba(99,102,241,0.1)' : 'transparent',
-            color: selected ? '#818cf8' : '#a1a1aa',
+            padding: '8px 14px', fontSize: 12,
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: selected ? 'rgba(200,169,110,0.08)' : 'transparent',
+            color: selected ? '#c8a96e' : '#6e6e78',
             border: 'none', cursor: 'pointer',
-            fontFamily: 'inherit', transition: 'background 0.1s, color 0.1s',
+            fontFamily: "'DM Mono', monospace",
+            letterSpacing: '0.01em',
+            transition: 'background 0.1s, color 0.1s',
         }}
     >
-        <FileText size={12} style={{ flexShrink: 0 }} />
+        <FileText size={11} style={{ flexShrink: 0 }} />
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-        {status === 'indexing' && <Clock size={11} style={{ color: '#f59e0b', flexShrink: 0 }} />}
-        {selected && status !== 'indexing' && <CheckCircle size={12} style={{ flexShrink: 0, color: '#6366f1' }} />}
+        {status === 'indexing' && <Clock size={10} style={{ color: '#8a7040', flexShrink: 0 }} />}
+        {selected && status !== 'indexing' && <CheckCircle size={11} style={{ flexShrink: 0, color: '#c8a96e' }} />}
     </button>
 );
 
 /* ─────────────────────────────────────────
-   Suggested Questions (shown in empty state)
+   Suggested Questions
 ───────────────────────────────────────── */
 const SuggestedQuestions = ({ file, onSelect }) => {
     if (!file) return null;
@@ -655,21 +682,22 @@ const SuggestedQuestions = ({ file, onSelect }) => {
         'What are the main conclusions?',
     ];
     return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 520 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 500 }}>
             {prompts.map(p => (
                 <button
                     key={p}
                     onClick={() => onSelect(p)}
                     style={{
-                        padding: '8px 14px', borderRadius: 99,
-                        background: 'rgba(99,102,241,0.08)',
-                        border: '1px solid rgba(99,102,241,0.2)',
-                        color: '#818cf8', fontSize: 12.5, fontWeight: 500,
-                        cursor: 'pointer', fontFamily: 'inherit',
+                        padding: '7px 14px', borderRadius: 4,
+                        background: 'rgba(200,169,110,0.05)',
+                        border: '1px solid rgba(200,169,110,0.15)',
+                        color: '#c8a96e', fontSize: 11.5,
+                        cursor: 'pointer', fontFamily: "'DM Mono', monospace",
+                        letterSpacing: '0.03em',
                         transition: 'all 0.15s',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.16)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.08)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.2)'; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(200,169,110,0.1)'; e.currentTarget.style.borderColor = 'rgba(200,169,110,0.3)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(200,169,110,0.05)'; e.currentTarget.style.borderColor = 'rgba(200,169,110,0.15)'; }}
                 >
                     {p}
                 </button>
@@ -684,7 +712,7 @@ const SuggestedQuestions = ({ file, onSelect }) => {
 const Chatbot = () => {
     const [messages, setMessages] = useState([{
         id: 1, type: 'bot',
-        content: 'Hello! Upload a PDF or TXT file and start asking questions about it.',
+        content: 'Upload a PDF or TXT and start querying.',
         timestamp: new Date(),
         images: [],
     }]);
@@ -779,13 +807,13 @@ const Chatbot = () => {
             setFiles(prev => prev.map(f => f.name === filename ? { ...f, status: 'indexing' } : f));
             setMessages(prev => [...prev, {
                 id: Date.now(), type: 'bot',
-                content: `🔄 Re-indexing **"${filename}"** started. This may take a moment.`,
+                content: `Re-indexing **"${filename}"** started.`,
                 timestamp: new Date(), images: [],
             }]);
         } catch (err) {
             setMessages(prev => [...prev, {
                 id: Date.now(), type: 'bot',
-                content: `⚠️ Re-index failed: ${err.response?.data?.error || err.message}`,
+                content: `Re-index failed: ${err.response?.data?.error || err.message}`,
                 timestamp: new Date(), images: [],
             }]);
         }
@@ -814,13 +842,13 @@ const Chatbot = () => {
             setShowUploadPanel(false);
             setMessages(prev => [...prev, {
                 id: Date.now(), type: 'bot',
-                content: `✅ **"${uploaded}"** uploaded and indexed! You can now ask questions about it.`,
+                content: `**"${uploaded}"** uploaded and indexed. You can now query it.`,
                 timestamp: new Date(), images: [],
             }]);
         } catch (err) {
             setMessages(prev => [...prev, {
                 id: Date.now(), type: 'bot',
-                content: `⚠️ Upload failed: ${err.response?.data?.error || err.message}`,
+                content: `Upload failed: ${err.response?.data?.error || err.message}`,
                 timestamp: new Date(), images: [],
             }]);
         } finally {
@@ -839,7 +867,7 @@ const Chatbot = () => {
         if (!selectedFile) {
             setMessages(prev => [...prev, {
                 id: Date.now(), type: 'bot',
-                content: '⚠️ Please upload or select a file first.',
+                content: 'Please upload or select a file first.',
                 timestamp: new Date(), images: [],
             }]);
             return;
@@ -853,7 +881,7 @@ const Chatbot = () => {
         isAtBottomRef.current = true;
 
         const botId = Date.now() + 1;
-        setMessages(prev => [...prev, { id: botId, type: 'bot', content: '', timestamp: new Date(), images: [] }]);
+        setMessages(prev => [...prev, { id: botId, type: 'bot', content: '', timestamp: new Date(), images: [], thinking: '', thinkDone: false }]);
 
         try {
             const response = await fetch(`${API}/generate`, {
@@ -914,6 +942,19 @@ const Chatbot = () => {
                             ));
                             continue;
                         }
+                        if (json.think_token) {
+                            setMessages(prev => prev.map(msg =>
+                                msg.id === botId ? { ...msg, thinking: (msg.thinking || '') + json.think_token } : msg
+                            ));
+                            continue;
+                        }
+                        if (json.think_end) {
+                            setMessages(prev => prev.map(msg =>
+                                msg.id === botId ? { ...msg, thinkDone: true } : msg
+                            ));
+                            continue;
+                        }
+
                         const token = json.token || '';
                         if (token) tokenQueue.push(...token.split(''));
                     } catch { }
@@ -934,7 +975,7 @@ const Chatbot = () => {
             clearInterval(drip);
         } catch (error) {
             setMessages(prev => prev.map(msg =>
-                msg.id === botId ? { ...msg, content: `⚠️ Error: ${error.message}` } : msg
+                msg.id === botId ? { ...msg, content: `Error: ${error.message}` } : msg
             ));
         } finally {
             setIsTyping(false);
@@ -950,66 +991,73 @@ const Chatbot = () => {
 
     return (
         <>
-            <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+            {/* Google Fonts — same as ReportPanel */}
+            <link rel="preconnect" href="https://fonts.googleapis.com" />
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+            <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;1,9..144,300&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
 
+            <style>{`
                 * { box-sizing: border-box; margin: 0; padding: 0; }
 
                 ::-webkit-scrollbar { width: 4px; height: 4px; }
                 ::-webkit-scrollbar-track { background: transparent; }
-                ::-webkit-scrollbar-thumb { background: #2e2e3a; border-radius: 99px; }
-                ::-webkit-scrollbar-thumb:hover { background: #42424e; }
+                ::-webkit-scrollbar-thumb { background: #252530; border-radius: 99px; }
+                ::-webkit-scrollbar-thumb:hover { background: #3a3a48; }
 
                 @keyframes spin { to { transform: rotate(360deg); } }
                 @keyframes bounce {
-                    0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
-                    40% { transform: translateY(-5px); opacity: 1; }
+                    0%, 80%, 100% { transform: translateY(0); opacity: 0.3; }
+                    40% { transform: translateY(-4px); opacity: 1; }
                 }
                 @keyframes shimmer {
-                    0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; }
+                    0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; }
                 }
                 @keyframes modalIn {
-                    from { opacity: 0; transform: scale(0.95) translateY(8px); }
+                    from { opacity: 0; transform: scale(0.96) translateY(8px); }
                     to   { opacity: 1; transform: scale(1) translateY(0); }
                 }
                 @keyframes fadeSlideUp {
-                    from { opacity: 0; transform: translateY(12px); }
+                    from { opacity: 0; transform: translateY(10px); }
                     to   { opacity: 1; transform: translateY(0); }
                 }
                 @keyframes fadeIn {
                     from { opacity: 0; } to { opacity: 1; }
                 }
                 @keyframes scrollBtnIn {
-                    from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+                    from { opacity: 0; transform: translateX(-50%) translateY(8px); }
                     to   { opacity: 1; transform: translateX(-50%) translateY(0); }
                 }
                 @keyframes pulse {
-                    0%, 100% { opacity: 1; } 50% { opacity: 0.5; }
+                    0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
                 }
 
-                .msg-bot { animation: fadeSlideUp 0.22s ease forwards; }
-                .msg-user { animation: fadeSlideUp 0.16s ease forwards; }
+                .cb-msg-bot  { animation: fadeSlideUp 0.22s ease forwards; }
+                .cb-msg-user { animation: fadeSlideUp 0.16s ease forwards; }
 
-                .send-btn:not(:disabled):hover { background: #4f46e5 !important; }
-                .send-btn:not(:disabled):active { transform: scale(0.92); }
+                .cb-send-btn:not(:disabled):hover { background: #d4b880 !important; }
+                .cb-send-btn:not(:disabled):active { transform: scale(0.92); }
 
-                .input-area:focus-within {
-                    border-color: rgba(99,102,241,0.5) !important;
-                    box-shadow: 0 0 0 3px rgba(99,102,241,0.1) !important;
+                .cb-input-area:focus-within {
+                    border-color: rgba(200,169,110,0.4) !important;
+                    box-shadow: 0 0 0 3px rgba(200,169,110,0.06) !important;
                 }
 
-                .file-chip:hover { background: rgba(99,102,241,0.18) !important; border-color: rgba(99,102,241,0.4) !important; }
-                .file-option:not([data-selected]):hover { background: #1a1a26 !important; color: #e4e4e7 !important; }
+                .cb-file-option:hover { background: rgba(200,169,110,0.06) !important; color: #a0a0b0 !important; }
 
-                .topbar-btn:hover { background: #1a1a26 !important; border-color: #2e2e3a !important; color: #e4e4e7 !important; }
-                .topbar-btn.active { background: #1f1f30 !important; border-color: rgba(99,102,241,0.35) !important; color: #818cf8 !important; }
+                .cb-topbar-btn { transition: all 0.15s; }
+                .cb-topbar-btn:hover { background: #17171b !important; border-color: #2a2a30 !important; color: #c8c6c1 !important; }
+                .cb-topbar-btn.active { background: #1e1a0f !important; border-color: rgba(200,169,110,0.3) !important; color: #c8a96e !important; }
+
+                .cb-file-chip:hover { background: rgba(200,169,110,0.1) !important; border-color: rgba(200,169,110,0.3) !important; }
             `}</style>
 
             <div style={{
                 position: 'relative', display: 'flex', flexDirection: 'column',
-                height: '100vh', background: '#08080e',
-                fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif',
-                color: '#e4e4e7', overflow: 'hidden',
+                height: '100vh',
+                background: '#0e0e10',
+                fontFamily: "'DM Mono', 'Fira Code', monospace",
+                color: '#e8e6e1', overflow: 'hidden',
+                letterSpacing: '0.01em',
             }}>
                 {/* Upload Panel */}
                 {showUploadPanel && (
@@ -1032,105 +1080,100 @@ const Chatbot = () => {
 
                 {/* ── Top Bar ── */}
                 <div style={{
-                    borderBottom: '1px solid #12121a',
-                    padding: '0 18px',
-                    height: 54,
+                    borderBottom: '1px solid #1e1e22',
+                    padding: '0 20px',
+                    height: 52,
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     flexShrink: 0,
-                    background: 'rgba(8,8,14,0.98)',
+                    background: 'rgba(14,14,16,0.98)',
                     backdropFilter: 'blur(14px)',
                     position: 'sticky', top: 0, zIndex: 100,
                 }}>
-                    {/* Logo */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{
-                            width: 30, height: 30, borderRadius: 9,
-                            background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: '0 2px 14px rgba(99,102,241,0.4)',
-                            flexShrink: 0,
-                        }}>
-                            <Zap size={14} fill="white" stroke="none" />
-                        </div>
+                    {/* Brand — mirrors ReportPanel topbar */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ color: '#c8a96e', fontSize: 17, lineHeight: 1 }}>◈</span>
                         <div>
-                            <p style={{ fontSize: 13.5, fontWeight: 600, color: '#f4f4f5', lineHeight: 1, letterSpacing: '-0.02em' }}>CMTI Bot</p>
-                            <p style={{ fontSize: 10, color: '#42424e', lineHeight: 1, marginTop: 2, letterSpacing: '0.01em' }}>AI Document Assistant</p>
+                            <p style={{ fontSize: 14, fontWeight: 500, color: '#e8e6e1', lineHeight: 1, letterSpacing: '0.02em', fontFamily: "'Fraunces', serif" }}>
+                                CMTI Bot
+                            </p>
+
                         </div>
                     </div>
 
                     {/* Right controls */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+
                         {/* New Chat */}
                         <button
-                            className="topbar-btn"
+                            className="cb-topbar-btn"
                             onClick={() => {
-                                setMessages([{ id: 1, type: 'bot', content: 'Hello! Upload a PDF or TXT file and start asking questions about it.', timestamp: new Date(), images: [] }]);
+                                setMessages([{ id: 1, type: 'bot', content: 'Upload a PDF or TXT and start querying.', timestamp: new Date(), images: [] }]);
                                 setInputValue('');
                                 setUserScrolled(false);
                             }}
                             style={{
                                 display: 'flex', alignItems: 'center', gap: 5,
-                                background: 'transparent', border: '1px solid #1e1e2a',
-                                color: '#71717a', padding: '5px 11px', borderRadius: 8,
-                                fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                                transition: 'all 0.15s', fontFamily: 'inherit',
+                                background: 'transparent', border: '1px solid #252530',
+                                color: '#4e4e58', padding: '5px 11px', borderRadius: 4,
+                                fontSize: 11.5, cursor: 'pointer',
+                                fontFamily: "'DM Mono', monospace", letterSpacing: '0.03em',
                             }}
                         >
-                            <Plus size={12} />
+                            <Plus size={11} />
                             <span style={{ display: window.innerWidth < 480 ? 'none' : 'inline' }}>New chat</span>
                         </button>
 
                         {selectedFile && (
                             <button
-                                className={`topbar-btn${showReport ? ' active' : ''}`}
+                                className={`cb-topbar-btn${showReport ? ' active' : ''}`}
                                 onClick={() => setShowReport(s => !s)}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: 5,
-                                    background: 'transparent', border: '1px solid #1e1e2a',
-                                    color: '#71717a', padding: '5px 11px', borderRadius: 8,
-                                    fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                                    transition: 'all 0.15s', fontFamily: 'inherit',
+                                    background: 'transparent', border: '1px solid #252530',
+                                    color: '#4e4e58', padding: '5px 11px', borderRadius: 4,
+                                    fontSize: 11.5, cursor: 'pointer',
+                                    fontFamily: "'DM Mono', monospace", letterSpacing: '0.03em',
                                 }}
                             >
-                                <FileText size={12} />
+                                <FileText size={11} />
                                 <span style={{ display: window.innerWidth < 480 ? 'none' : 'inline' }}>Report</span>
                             </button>
                         )}
 
                         {selectedFile && (
                             <button
-                                className={`topbar-btn${showSidebar ? ' active' : ''}`}
+                                className={`cb-topbar-btn${showSidebar ? ' active' : ''}`}
                                 onClick={() => setShowSidebar(s => !s)}
-                                title="View all pages"
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: 5,
-                                    background: 'transparent', border: '1px solid #1e1e2a',
-                                    color: '#71717a', padding: '5px 11px', borderRadius: 8,
-                                    fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                                    transition: 'all 0.15s', fontFamily: 'inherit',
+                                    background: 'transparent', border: '1px solid #252530',
+                                    color: '#4e4e58', padding: '5px 11px', borderRadius: 4,
+                                    fontSize: 11.5, cursor: 'pointer',
+                                    fontFamily: "'DM Mono', monospace", letterSpacing: '0.03em',
                                 }}
                             >
-                                <LayoutGrid size={12} />
+                                <LayoutGrid size={11} />
                                 <span style={{ display: window.innerWidth < 480 ? 'none' : 'inline' }}>Pages</span>
                             </button>
                         )}
 
                         <button
-                            className="topbar-btn"
+                            className="cb-topbar-btn"
                             onClick={() => setShowUploadPanel(true)}
                             disabled={uploading}
                             style={{
                                 display: 'flex', alignItems: 'center', gap: 5,
-                                background: 'transparent', border: '1px solid #1e1e2a',
-                                color: uploading ? '#42424e' : '#818cf8', padding: '5px 11px', borderRadius: 8,
-                                fontSize: 12, fontWeight: 500, cursor: uploading ? 'wait' : 'pointer',
-                                transition: 'all 0.15s', opacity: uploading ? 0.65 : 1,
-                                fontFamily: 'inherit',
+                                background: 'transparent', border: '1px solid #252530',
+                                color: uploading ? '#3e3e48' : '#c8a96e',
+                                padding: '5px 11px', borderRadius: 4,
+                                fontSize: 11.5, cursor: uploading ? 'wait' : 'pointer',
+                                opacity: uploading ? 0.65 : 1,
+                                fontFamily: "'DM Mono', monospace", letterSpacing: '0.03em',
                             }}
                         >
                             {uploading
-                                ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
-                                : <Upload size={12} />
+                                ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />
+                                : <Upload size={11} />
                             }
                             <span style={{ display: window.innerWidth < 480 ? 'none' : 'inline' }}>{uploading ? 'Indexing…' : 'Upload'}</span>
                         </button>
@@ -1145,35 +1188,35 @@ const Chatbot = () => {
                                 style={{
                                     position: 'relative', zIndex: 3,
                                     display: 'flex', alignItems: 'center', gap: 6,
-                                    background: showDropdown ? '#1a1a26' : 'transparent',
-                                    border: `1px solid ${showDropdown ? 'rgba(99,102,241,0.3)' : '#1e1e2a'}`,
-                                    color: '#c4c4d4', padding: '5px 11px', borderRadius: 8,
-                                    fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                                    transition: 'all 0.15s', fontFamily: 'inherit',
+                                    background: showDropdown ? '#17171b' : 'transparent',
+                                    border: `1px solid ${showDropdown ? 'rgba(200,169,110,0.25)' : '#252530'}`,
+                                    color: '#a0a0b0', padding: '5px 11px', borderRadius: 4,
+                                    fontSize: 11.5, cursor: 'pointer',
+                                    fontFamily: "'DM Mono', monospace", letterSpacing: '0.01em',
                                     maxWidth: 200,
                                 }}
                             >
-                                <FileText size={12} style={{ color: '#6366f1', flexShrink: 0 }} />
+                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#c8a96e', flexShrink: 0 }} />
                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, maxWidth: 130 }}>
                                     {selectedFile || 'No file'}
                                 </span>
                                 {files.find(f => f.name === selectedFile)?.status === 'indexing' && (
-                                    <Clock size={10} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                                    <Clock size={9} style={{ color: '#8a7040', flexShrink: 0 }} />
                                 )}
-                                <ChevronDown size={11} style={{ color: '#42424e', flexShrink: 0, transform: showDropdown ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }} />
+                                <ChevronDown size={10} style={{ color: '#3e3e48', flexShrink: 0, transform: showDropdown ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }} />
                             </button>
 
                             {showDropdown && (
                                 <div style={{
                                     position: 'absolute', right: 0, top: 'calc(100% + 6px)',
-                                    width: 260, background: '#111118',
-                                    border: '1px solid #1e1e2a', borderRadius: 12,
-                                    boxShadow: '0 20px 60px rgba(0,0,0,0.65)',
+                                    width: 260, background: '#0e0e10',
+                                    border: '1px solid #1e1e22', borderRadius: 6,
+                                    boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
                                     zIndex: 2, overflow: 'hidden',
                                     animation: 'fadeIn 0.14s ease',
                                 }}>
                                     {files.length === 0
-                                        ? <p style={{ color: '#42424e', fontSize: 12.5, padding: '12px 16px' }}>No files indexed yet</p>
+                                        ? <p style={{ color: '#3e3e48', fontSize: 12, padding: '12px 16px', letterSpacing: '0.03em' }}>No files indexed yet</p>
                                         : files.map(f => (
                                             <FileOption
                                                 key={f.name}
@@ -1194,27 +1237,21 @@ const Chatbot = () => {
                 <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex' }}>
 
                     {/* ── Empty / welcome state ── */}
-                    {(isEmpty || (hasFileButEmpty)) && (
+                    {(isEmpty || hasFileButEmpty) && (
                         <div style={{
                             flex: 1, display: 'flex', flexDirection: 'column',
                             alignItems: 'center', justifyContent: 'center',
                             gap: 20, padding: '0 24px',
                             animation: 'fadeSlideUp 0.35s ease',
                         }}>
-                            <div style={{
-                                width: 52, height: 52, borderRadius: 15,
-                                background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(79,70,229,0.08))',
-                                border: '1px solid rgba(99,102,241,0.2)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}>
-                                <Sparkles size={22} style={{ color: '#6366f1' }} />
-                            </div>
+                            {/* Decorative symbol */}
+                            <div style={{ fontSize: 32, color: '#2a2a35', lineHeight: 1 }}>∴</div>
                             <div style={{ textAlign: 'center' }}>
-                                <p style={{ fontSize: 16, fontWeight: 600, color: '#e4e4e7', letterSpacing: '-0.02em' }}>
-                                    {isEmpty ? 'No documents yet' : `Ask about ${selectedFile}`}
+                                <p style={{ fontSize: 16, fontWeight: 300, color: '#4a4a56', fontFamily: "'Fraunces', serif", fontStyle: 'italic' }}>
+                                    {isEmpty ? 'No documents loaded' : `Query · ${selectedFile}`}
                                 </p>
-                                <p style={{ fontSize: 12.5, color: '#42424e', marginTop: 5 }}>
-                                    {isEmpty ? 'Upload a PDF or TXT to start asking questions' : 'Type a question or choose a suggestion below'}
+                                <p style={{ fontSize: 11.5, color: '#2e2e3a', marginTop: 6, letterSpacing: '0.03em' }}>
+                                    {isEmpty ? 'Upload a PDF or TXT to begin' : 'Type a question or select a prompt below'}
                                 </p>
                             </div>
                             {isEmpty ? (
@@ -1222,17 +1259,18 @@ const Chatbot = () => {
                                     onClick={() => setShowUploadPanel(true)}
                                     style={{
                                         display: 'flex', alignItems: 'center', gap: 8,
-                                        background: '#6366f1', color: 'white',
-                                        padding: '10px 20px', borderRadius: 10,
-                                        fontSize: 13, fontWeight: 500,
+                                        background: '#c8a96e', color: '#0a0a0e',
+                                        padding: '9px 20px', borderRadius: 4,
+                                        fontSize: 12, fontWeight: 500,
                                         border: 'none', cursor: 'pointer',
-                                        fontFamily: 'inherit', transition: 'background 0.15s',
-                                        boxShadow: '0 4px 16px rgba(99,102,241,0.35)',
+                                        fontFamily: "'DM Mono', monospace",
+                                        letterSpacing: '0.04em',
+                                        transition: 'background 0.15s',
                                     }}
-                                    onMouseEnter={e => e.currentTarget.style.background = '#4f46e5'}
-                                    onMouseLeave={e => e.currentTarget.style.background = '#6366f1'}
+                                    onMouseEnter={e => e.currentTarget.style.background = '#d4b880'}
+                                    onMouseLeave={e => e.currentTarget.style.background = '#c8a96e'}
                                 >
-                                    <Upload size={14} />
+                                    <Upload size={13} />
                                     Upload a document
                                 </button>
                             ) : (
@@ -1248,15 +1286,15 @@ const Chatbot = () => {
                             onScroll={handleScroll}
                             style={{
                                 flex: 1, overflowY: 'auto',
-                                padding: '28px 20px 20px',
+                                padding: '28px 24px 20px',
                                 display: 'flex', flexDirection: 'column',
                             }}
                         >
-                            <div style={{ maxWidth: 780, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+                            <div style={{ maxWidth: 760, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 22 }}>
                                 {messages.map((msg, idx) => (
                                     <div
                                         key={msg.id}
-                                        className={msg.type === 'user' ? 'msg-user' : 'msg-bot'}
+                                        className={msg.type === 'user' ? 'cb-msg-user' : 'cb-msg-bot'}
                                         style={{
                                             display: 'flex',
                                             justifyContent: msg.type === 'user' ? 'flex-end' : 'flex-start',
@@ -1265,34 +1303,37 @@ const Chatbot = () => {
                                         }}
                                     >
                                         {msg.type === 'user' ? (
+                                            /* User bubble */
                                             <div style={{
                                                 maxWidth: '72%',
-                                                background: 'linear-gradient(135deg, #4f46e5, #6366f1)',
-                                                color: '#eef2ff',
+                                                background: '#17171b',
+                                                border: '1px solid rgba(200,169,110,0.2)',
+                                                color: '#c8c6c1',
                                                 padding: '10px 15px',
-                                                borderRadius: '16px 16px 3px 16px',
-                                                fontSize: 13.5, lineHeight: 1.65,
-                                                boxShadow: '0 2px 16px rgba(99,102,241,0.28)',
+                                                borderRadius: '8px 8px 2px 8px',
+                                                fontSize: 13, lineHeight: 1.65,
+                                                fontFamily: "'DM Mono', monospace",
+                                                letterSpacing: '0.01em',
                                             }}>
                                                 {msg.content}
                                             </div>
                                         ) : (
-                                            <div style={{ display: 'flex', gap: 11, maxWidth: '100%', alignItems: 'flex-start', width: '100%' }}>
+                                            /* Bot message */
+                                            <div style={{ display: 'flex', gap: 12, maxWidth: '100%', alignItems: 'flex-start', width: '100%' }}>
+                                                {/* Avatar */}
                                                 <div style={{
-                                                    width: 28, height: 28, borderRadius: 9, flexShrink: 0,
-                                                    background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+                                                    width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+                                                    background: '#17171b',
+                                                    border: '1px solid rgba(200,169,110,0.2)',
                                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    boxShadow: '0 2px 10px rgba(99,102,241,0.3)',
                                                     marginTop: 2,
                                                 }}>
-                                                    <Zap size={12} fill="white" stroke="none" />
+                                                    <span style={{ color: '#c8a96e', fontSize: 12, lineHeight: 1 }}>◈</span>
                                                 </div>
-                                                <div style={{
-                                                    flex: 1,
-                                                    minWidth: 0,
-                                                    overflowX: 'hidden',
-                                                    paddingTop: 2,
-                                                }}>
+                                                <div style={{ flex: 1, minWidth: 0, overflowX: 'hidden', paddingTop: 2 }}>
+                                                    {msg.thinking && (
+                                                        <ThinkBlock thinking={msg.thinking} done={msg.thinkDone} />
+                                                    )}
                                                     {msg.content
                                                         ? <MarkdownMessage content={msg.content} />
                                                         : isTyping && idx === messages.length - 1
@@ -1319,11 +1360,10 @@ const Chatbot = () => {
                     {/* ── Report panel ── */}
                     {showReport && selectedFile && (
                         <div style={{
-                            position: 'absolute', right: showSidebar ? 176 : 0, top: 0, bottom: 0,
+                            position: 'absolute', right: showSidebar ? 168 : 0, top: 0, bottom: 0,
                             width: 460, overflowY: 'auto',
-                            background: '#0a0a10',
-                            borderLeft: '1px solid #16161f',
-                            padding: '20px',
+                            background: '#0e0e10',
+                            borderLeft: '1px solid #1e1e22',
                             zIndex: 35,
                             transition: 'right 0.25s cubic-bezier(0.4,0,0.2,1)',
                         }}>
@@ -1346,58 +1386,59 @@ const Chatbot = () => {
                         onClick={() => { setUserScrolled(false); scrollToBottom('smooth'); }}
                         style={{
                             position: 'absolute',
-                            bottom: 104, left: '50%',
+                            bottom: 100, left: '50%',
                             transform: 'translateX(-50%)',
                             zIndex: 25,
                             display: 'flex', alignItems: 'center', gap: 5,
-                            background: '#111118',
-                            border: '1px solid #2e2e3a',
-                            color: '#a1a1aa',
-                            padding: '7px 14px', borderRadius: 99,
-                            fontSize: 12, fontWeight: 500,
-                            cursor: 'pointer', fontFamily: 'inherit',
-                            boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+                            background: '#13131a',
+                            border: '1px solid #252530',
+                            color: '#6e6e78',
+                            padding: '6px 14px', borderRadius: 4,
+                            fontSize: 11.5,
+                            cursor: 'pointer', fontFamily: "'DM Mono', monospace",
+                            letterSpacing: '0.03em',
+                            boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
                             animation: 'scrollBtnIn 0.2s cubic-bezier(0.34,1.56,0.64,1)',
                             transition: 'all 0.15s',
                             whiteSpace: 'nowrap',
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#1a1a26'; e.currentTarget.style.color = '#e4e4e7'; e.currentTarget.style.borderColor = '#42424e'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = '#111118'; e.currentTarget.style.color = '#a1a1aa'; e.currentTarget.style.borderColor = '#2e2e3a'; }}
+                        onMouseEnter={e => { e.currentTarget.style.color = '#c8c6c1'; e.currentTarget.style.borderColor = '#3a3a48'; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = '#6e6e78'; e.currentTarget.style.borderColor = '#252530'; }}
                     >
-                        <ArrowDown size={12} />
+                        <ArrowDown size={11} />
                         Scroll to bottom
                     </button>
                 )}
 
                 {/* ── Input Bar ── */}
                 <div style={{
-                    borderTop: '1px solid #12121a',
-                    padding: '10px 18px 14px',
+                    borderTop: '1px solid #1e1e22',
+                    padding: '10px 20px 16px',
                     flexShrink: 0,
-                    background: 'rgba(8,8,14,0.98)',
+                    background: 'rgba(14,14,16,0.98)',
                     backdropFilter: 'blur(14px)',
                 }}>
                     {/* Active file chip */}
                     {selectedFile && (
-                        <div style={{ maxWidth: 780, margin: '0 auto 8px' }}>
+                        <div style={{ maxWidth: 760, margin: '0 auto 8px' }}>
                             <span
-                                className="file-chip"
+                                className="cb-file-chip"
                                 style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                                    background: 'rgba(99,102,241,0.08)',
-                                    border: '1px solid rgba(99,102,241,0.18)',
-                                    color: '#818cf8', fontSize: 11, fontWeight: 500,
-                                    padding: '4px 10px', borderRadius: 99,
+                                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                                    background: 'rgba(200,169,110,0.06)',
+                                    border: '1px solid rgba(200,169,110,0.15)',
+                                    color: '#c8a96e', fontSize: 10.5,
+                                    padding: '4px 10px', borderRadius: 4,
                                     cursor: 'pointer', transition: 'all 0.15s',
-                                    letterSpacing: '0.01em',
+                                    fontFamily: "'DM Mono', monospace", letterSpacing: '0.04em',
                                 }}
                                 onClick={() => setShowUploadPanel(true)}
                             >
-                                <FileText size={10} />
+                                <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#c8a96e', flexShrink: 0 }} />
                                 {selectedFile}
                                 {files.find(f => f.name === selectedFile)?.status === 'indexing' && (
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: '#f59e0b' }}>
-                                        <Clock size={9} /> indexing…
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: '#8a7040' }}>
+                                        <Clock size={8} /> indexing…
                                     </span>
                                 )}
                             </span>
@@ -1405,13 +1446,13 @@ const Chatbot = () => {
                     )}
 
                     {/* Textarea + buttons */}
-                    <div style={{ maxWidth: 780, margin: '0 auto' }}>
+                    <div style={{ maxWidth: 760, margin: '0 auto' }}>
                         <div
-                            className="input-area"
+                            className="cb-input-area"
                             style={{
                                 display: 'flex', alignItems: 'flex-end', gap: 8,
-                                background: '#0f0f18', border: '1px solid #1e1e2a',
-                                borderRadius: 14, padding: '8px 8px 8px 13px',
+                                background: '#13131a', border: '1px solid #252530',
+                                borderRadius: 6, padding: '8px 8px 8px 13px',
                                 transition: 'border-color 0.2s, box-shadow 0.2s',
                             }}
                         >
@@ -1419,18 +1460,18 @@ const Chatbot = () => {
                                 onClick={() => setShowUploadPanel(true)}
                                 disabled={uploading}
                                 style={{
-                                    padding: 7, borderRadius: 8, background: 'transparent',
+                                    padding: 7, borderRadius: 5, background: 'transparent',
                                     border: 'none', cursor: uploading ? 'wait' : 'pointer',
-                                    color: '#42424e', flexShrink: 0, opacity: uploading ? 0.5 : 1,
+                                    color: '#3e3e48', flexShrink: 0, opacity: uploading ? 0.5 : 1,
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     transition: 'all 0.15s', marginBottom: 1,
                                 }}
-                                onMouseEnter={e => { if (!uploading) { e.currentTarget.style.color = '#818cf8'; e.currentTarget.style.background = '#1a1a26'; } }}
-                                onMouseLeave={e => { e.currentTarget.style.color = '#42424e'; e.currentTarget.style.background = 'transparent'; }}
+                                onMouseEnter={e => { if (!uploading) { e.currentTarget.style.color = '#c8a96e'; } }}
+                                onMouseLeave={e => { e.currentTarget.style.color = '#3e3e48'; }}
                             >
                                 {uploading
-                                    ? <Loader2 size={16} style={{ color: '#6366f1', animation: 'spin 1s linear infinite' }} />
-                                    : <Paperclip size={16} />
+                                    ? <Loader2 size={15} style={{ color: '#c8a96e', animation: 'spin 1s linear infinite' }} />
+                                    : <Paperclip size={15} />
                                 }
                             </button>
 
@@ -1439,37 +1480,39 @@ const Chatbot = () => {
                                 value={inputValue}
                                 onChange={e => setInputValue(e.target.value)}
                                 onKeyDown={handleKeyDown}
-                                placeholder={!selectedFile ? 'Upload a file to start…' : `Ask anything about ${selectedFile}…`}
+                                placeholder={!selectedFile ? 'Upload a file to start…' : `Query ${selectedFile}…`}
                                 rows={1}
                                 style={{
                                     flex: 1, background: 'transparent', border: 'none',
-                                    outline: 'none', resize: 'none', color: '#e4e4e7',
-                                    fontSize: 13.5, lineHeight: 1.6, fontFamily: 'inherit',
+                                    outline: 'none', resize: 'none', color: '#c8c6c1',
+                                    fontSize: 13, lineHeight: 1.6,
+                                    fontFamily: "'DM Mono', monospace",
+                                    letterSpacing: '0.01em',
                                     padding: '5px 0', maxHeight: 160, overflowY: 'auto',
                                 }}
                             />
 
                             <button
-                                className="send-btn"
+                                className="cb-send-btn"
                                 onClick={() => handleSend()}
                                 disabled={!inputValue.trim() || !selectedFile || uploading}
                                 style={{
-                                    width: 33, height: 33, borderRadius: 9, flexShrink: 0,
-                                    background: inputValue.trim() && selectedFile && !uploading ? '#6366f1' : '#1a1a26',
-                                    border: 'none', cursor: inputValue.trim() && selectedFile && !uploading ? 'pointer' : 'not-allowed',
+                                    width: 32, height: 32, borderRadius: 5, flexShrink: 0,
+                                    background: inputValue.trim() && selectedFile && !uploading ? '#c8a96e' : '#17171b',
+                                    border: `1px solid ${inputValue.trim() && selectedFile && !uploading ? '#c8a96e' : '#252530'}`,
+                                    cursor: inputValue.trim() && selectedFile && !uploading ? 'pointer' : 'not-allowed',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    color: inputValue.trim() && selectedFile && !uploading ? 'white' : '#2e2e38',
+                                    color: inputValue.trim() && selectedFile && !uploading ? '#0a0a0e' : '#2e2e3a',
                                     transition: 'all 0.15s',
                                     marginBottom: 1,
-                                    boxShadow: inputValue.trim() && selectedFile && !uploading ? '0 2px 12px rgba(99,102,241,0.4)' : 'none',
                                 }}
                             >
-                                <Send size={14} />
+                                <Send size={13} />
                             </button>
                         </div>
 
-                        <p style={{ fontSize: 11, color: '#2a2a38', textAlign: 'center', marginTop: 7, letterSpacing: '0.01em' }}>
-                            Answers are grounded in the selected document only
+                        <p style={{ fontSize: 10.5, color: '#2a2a38', textAlign: 'center', marginTop: 7, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                            Answers grounded in selected document only
                         </p>
                     </div>
                 </div>

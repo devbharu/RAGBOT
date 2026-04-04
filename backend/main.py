@@ -78,7 +78,7 @@ app  = Flask(__name__)
 CORS(app)
 
 OLLAMA_HOST      = os.getenv("OLLAMA_HOST",      "http://localhost:11434")
-OLLAMA_MODEL     = os.getenv("OLLAMA_MODEL",     "gpt-oss:120b-cloud")
+OLLAMA_MODEL     = os.getenv("OLLAMA_MODEL",     "qwen3:4b")
 DOCS_DIR         = "rag_docs"
 CHROMA_DIR       = "chroma_db"
 UPLOAD_DIR       = "uploads"
@@ -734,13 +734,11 @@ def generate_ollama_response(
 
     hits, crag_context = crag_retrieve(query, filename)
     if not hits:
-        # fallback to original search if CRAG returns nothing
         hits = search_file(filename, query)
         crag_context = ""
     if not hits:
-        return f"No relevant content found in '{filename}'.", Falsee
+        return f"No relevant content found in '{filename}'.", False
 
-    # v4.1: intent-aware image selection (fixed)
     pages_to_show = _ask_llm_which_pages(query, hits, filename)
     image_items   = []
     for page_num in pages_to_show:
@@ -752,7 +750,6 @@ def generate_ollama_response(
             })
     print(f"[GENERATE] Images to send: {len(image_items)}")
 
-    # Build context
     if crag_context:
         context_text = crag_context
     else:
@@ -767,8 +764,6 @@ def generate_ollama_response(
             context_parts.append(f"{label}\n{h['text']}")
         context_text = "\n\n".join(context_parts)
 
-    # If pages are being shown to the user, tell the LLM which ones
-    # so it explains from those pages' text context instead of saying "no image found"
     page_ref_note = ""
     if image_items:
         page_nums = ", ".join(f"p.{item['page']}" for item in image_items)
@@ -824,6 +819,10 @@ def generate_ollama_response(
                 resp.raise_for_status()
                 last_heartbeat = time.time()
 
+                in_think  = False
+                think_buf = ""
+                text_buf  = ""
+
                 for line in resp.iter_lines():
                     if time.time() - last_heartbeat > 15:
                         yield ": heartbeat\n\n"
@@ -834,11 +833,54 @@ def generate_ollama_response(
                     try:
                         chunk = json.loads(line)
                         token = chunk.get("message", {}).get("content", "")
+
                         if token:
-                            yield f"data: {json.dumps({'token': token})}\n\n"
+                            text_buf += token
+
+                            while text_buf:
+                                if in_think:
+                                    end = text_buf.find("</think>")
+                                    if end == -1:
+                                        # no closing tag yet, flush all but last 8 chars (partial tag guard)
+                                        safe = text_buf[:-8] if len(text_buf) > 8 else ""
+                                        if safe:
+                                            think_buf += safe
+                                            yield f"data: {json.dumps({'think_token': safe})}\n\n"
+                                            text_buf = text_buf[len(safe):]
+                                        break
+                                    else:
+                                        think_buf += text_buf[:end]
+                                        yield f"data: {json.dumps({'think_token': text_buf[:end]})}\n\n"
+                                        yield f"data: {json.dumps({'think_end': True})}\n\n"
+                                        in_think  = False
+                                        think_buf = ""
+                                        text_buf  = text_buf[end + 8:]
+                                else:
+                                    start = text_buf.find("<think>")
+                                    if start == -1:
+                                        # no opening tag, flush all but last 7 chars (partial tag guard)
+                                        safe = text_buf[:-7] if len(text_buf) > 7 else ""
+                                        if safe:
+                                            yield f"data: {json.dumps({'token': safe})}\n\n"
+                                            text_buf = text_buf[len(safe):]
+                                        break
+                                    else:
+                                        if start > 0:
+                                            yield f"data: {json.dumps({'token': text_buf[:start]})}\n\n"
+                                        in_think = True
+                                        text_buf = text_buf[start + 7:]
+
                         if chunk.get("done"):
+                            # flush remaining
+                            if text_buf:
+                                if in_think:
+                                    yield f"data: {json.dumps({'think_token': text_buf})}\n\n"
+                                    yield f"data: {json.dumps({'think_end': True})}\n\n"
+                                else:
+                                    yield f"data: {json.dumps({'token': text_buf})}\n\n"
                             yield "data: [DONE]\n\n"
                             break
+
                     except Exception:
                         continue
 
@@ -853,7 +895,6 @@ def generate_ollama_response(
                    "data: [DONE]\n\n")
 
     return stream_tokens(), True
-
 
 # ──────────────────────────────────────────────────────────────
 # 17. Flask Endpoints
