@@ -1073,14 +1073,52 @@ def files():
 def delete():
     data     = request.json or {}
     filename = data.get("filename", "").strip()
+    
     if not filename:
         return jsonify({"error": "No filename provided"}), 400
+
+    results = {
+        "database": "not_found",
+        "files": "not_found",
+        "images": "not_found"
+    }
+
     try:
-        chroma_client.delete_collection(_collection_name(filename))
-        _set_status(filename, "unknown")
-        return jsonify({"status": "deleted", "file": filename})
+        # 1. Remove from ChromaDB
+        try:
+            chroma_client.delete_collection(_collection_name(filename))
+            results["database"] = "deleted"
+        except Exception as e:
+            results["database"] = f"error or already gone: {str(e)}"
+
+        # 2. Delete the physical PDF file (check both uploads and rag_docs)
+        for folder in [UPLOAD_DIR, DOCS_DIR]:
+            file_path = os.path.join(folder, filename)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                results["files"] = "deleted"
+
+        # 3. Delete the generated page images directory
+        image_dir = _image_dir_for_file(filename)
+        if os.path.isdir(image_dir):
+            import shutil
+            shutil.rmtree(image_dir)
+            results["images"] = "deleted"
+
+        # 4. Clear the internal status tracker
+        with _status_lock:
+            if filename in _index_status:
+                del _index_status[filename]
+
+        return jsonify({
+            "status": "success",
+            "file": filename,
+            "details": results
+        }), 200
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Cleanup failed: {str(e)}"}), 500
+    
 
 @app.route("/debug-images/<path:filename>", methods=["GET"])
 def debug_images(filename: str):

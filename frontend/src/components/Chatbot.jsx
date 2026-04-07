@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     Send, Paperclip, FileText, ChevronDown,
     Upload, X, FileUp, CheckCircle, Loader2,
-    ArrowDown, Plus, RefreshCw, Clock, FileSearch
+    ArrowDown, Plus, RefreshCw, Clock, FileSearch, Trash2
 } from 'lucide-react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
@@ -340,23 +340,42 @@ const TypingDots = () => (
 /* ─────────────────────────────────────────
    FileOption
 ───────────────────────────────────────── */
-const FileOption = ({ name, status, selected, onSelect }) => (
-    <button onClick={onSelect} style={{
-        width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12,
-        display: 'flex', alignItems: 'center', gap: 8,
+const FileOption = ({ name, status, selected, onSelect, onDelete }) => (
+    <div style={{
+        display: 'flex', alignItems: 'center', gap: 2, width: '100%',
         background: selected ? 'rgba(200,169,110,0.08)' : 'transparent',
-        color: selected ? '#c8a96e' : '#8a8a9a', border: 'none', cursor: 'pointer',
-        fontFamily: "'DM Mono', monospace", letterSpacing: '0.01em', transition: 'background 0.12s',
+        transition: 'background 0.12s',
     }}
-        onMouseEnter={e => { if (!selected) { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = '#c8c6c1'; } }}
-        onMouseLeave={e => { if (!selected) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8a8a9a'; } }}>
-        <FileText size={11} style={{ flexShrink: 0 }} />
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-        {status === 'indexing' && <Clock size={10} style={{ color: '#8a7040', flexShrink: 0 }} />}
-        {selected && status !== 'indexing' && <CheckCircle size={11} style={{ flexShrink: 0, color: '#c8a96e' }} />}
-    </button>
-);
+        onMouseEnter={e => { if (!selected) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+        onMouseLeave={e => { if (!selected) e.currentTarget.style.background = 'transparent'; }}>
+        <button onClick={onSelect} style={{
+            flex: 1, textAlign: 'left', padding: '8px 10px 8px 14px', fontSize: 12,
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: 'transparent',
+            color: selected ? '#c8a96e' : '#8a8a9a', border: 'none', cursor: 'pointer',
+            fontFamily: "'DM Mono', monospace", letterSpacing: '0.01em', overflow: 'hidden'
+        }}>
+            <FileText size={11} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+            {status === 'indexing' && <Clock size={10} style={{ color: '#8a7040', flexShrink: 0 }} />}
+            {selected && status !== 'indexing' && <CheckCircle size={11} style={{ flexShrink: 0, color: '#c8a96e' }} />}
+        </button>
 
+        {/* Delete Button */}
+        <button
+            onClick={(e) => { e.stopPropagation(); onDelete(name); }}
+            title="Delete document"
+            style={{
+                padding: '8px 12px', background: 'transparent', border: 'none',
+                cursor: 'pointer', color: '#38384a', display: 'flex', transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#38384a'; }}
+        >
+            <Trash2 size={11} />
+        </button>
+    </div>
+);
 /* ─────────────────────────────────────────
    Suggested Questions
 ───────────────────────────────────────── */
@@ -471,6 +490,37 @@ const Chatbot = () => {
         }, 3000);
         return () => clearInterval(interval);
     }, [files]);
+
+    const handleDeleteFile = async (filename) => {
+        if (!window.confirm(`Are you sure you want to permanently delete "${filename}"? This will remove the index, the file, and all associated images.`)) {
+            return;
+        }
+
+        try {
+            const res = await axios.post(`${API}/delete`, { filename });
+            if (res.data.status === 'deleted' || res.data.status === 'success') {
+                // Update local file list
+                setFiles(prev => prev.filter(f => f.name !== filename));
+
+                // If the deleted file was selected, select the first available or clear it
+                if (selectedFile === filename) {
+                    const remaining = files.filter(f => f.name !== filename);
+                    setSelectedFile(remaining.length > 0 ? remaining[0].name : '');
+                }
+
+                setMessages(prev => [...prev, {
+                    id: Date.now(),
+                    type: 'bot',
+                    content: `**"${filename}"** has been permanently deleted.`,
+                    timestamp: new Date(),
+                    images: []
+                }]);
+            }
+        } catch (err) {
+            console.error("Delete failed:", err);
+            alert(`Failed to delete file: ${err.response?.data?.error || err.message}`);
+        }
+    };
 
     const fetchFiles = async () => {
         try {
@@ -741,10 +791,16 @@ const Chatbot = () => {
                                     {files.length === 0
                                         ? <p style={{ color: '#48485a', fontSize: 12, padding: '12px 16px' }}>No files indexed yet</p>
                                         : files.map(f => (
-                                            <FileOption key={f.name} name={f.name} status={f.status}
+                                            <FileOption
+                                                key={f.name}
+                                                name={f.name}
+                                                status={f.status}
                                                 selected={selectedFile === f.name}
-                                                onSelect={() => { setSelectedFile(f.name); setShowDropdown(false); }} />
-                                        ))}
+                                                onSelect={() => { setSelectedFile(f.name); setShowDropdown(false); }}
+                                                onDelete={handleDeleteFile} // Pass the new function here
+                                            />
+                                        ))
+                                    }
                                 </div>
                             )}
                         </div>
