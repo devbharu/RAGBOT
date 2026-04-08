@@ -905,19 +905,48 @@ def generate_metall_report_stream():
         },
     )
 
-@app.route("/file/<path:filename>", methods=["GET"])
+@app.after_request
+def add_cors(response):
+    origin = request.headers.get("Origin", "*")
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    return response
+ 
+@app.route("/file/<path:filename>", methods=["GET", "OPTIONS"])
 def serve_file(filename):
+    if request.method == "OPTIONS":
+        # Preflight
+        resp = make_response("", 204)
+        return resp
+ 
     try:
-        # check uploads first
+        # 1. Try uploads dir first
         file_path = os.path.join(UPLOAD_DIR, filename)
+ 
+        # 2. Fall back to docs dir
         if not os.path.exists(file_path):
             file_path = os.path.join(DOCS_DIR, filename)
-
+ 
         if not os.path.exists(file_path):
-            return jsonify({"error": "File not found"}), 404
-
-        return send_file(file_path, as_attachment=False)
-
+            return jsonify({"error": f"File not found: {filename}"}), 404
+ 
+        # Detect mimetype — critical for PDF inline rendering
+        ext = os.path.splitext(filename)[1].lower()
+        mime_map = {
+            ".pdf": "application/pdf",
+            ".txt": "text/plain; charset=utf-8",
+        }
+        mimetype = mime_map.get(ext, "application/octet-stream")
+ 
+        return send_file(
+            file_path,
+            mimetype=mimetype,
+            as_attachment=False,        # inline, not download
+            conditional=True,           # supports range requests (PDF page seek)
+        )
+ 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
