@@ -1,19 +1,27 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+/**
+ * Chatbot.jsx — CMTI Bot (v6.0)
+ * - Tailwind CSS throughout (no inline style objects for layout/color)
+ * - Dark/Light theme via ThemeContext + CSS variables
+ * - Duplicate color keys fixed
+ * - PDF viewer uses getFileUrl from AppContext
+ * - Theme toggle button in top bar
+ */
+
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
     Send, Paperclip, FileText, ChevronDown,
     Upload, X, FileUp, CheckCircle, Loader2,
-    ArrowDown, Plus, RefreshCw, Clock, FileSearch, Trash2
-} from 'lucide-react';
-import axios from 'axios';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import rehypeRaw from 'rehype-raw';
-import 'katex/dist/katex.min.css';
-import ReportPanel from './Reportpanel';
-
-const API = 'http://127.0.0.1:8080';
+    ArrowDown, Plus, RefreshCw, Clock, FileSearch, Trash2, Sun, Moon,
+} from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
+import "katex/dist/katex.min.css";
+import { useNavigate } from "react-router-dom";
+import { useApp, API } from "../context/AppContext";
+import { useTheme } from "../context/ThemeContext";
 
 /* ─────────────────────────────────────────
    Drag-and-Drop Upload Zone
@@ -35,42 +43,43 @@ const UploadZone = ({ onUpload, uploading, uploadProgress }) => {
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onClick={() => !uploading && inputRef.current?.click()}
-            style={{
-                position: 'relative', display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center', gap: 14,
-                border: `1.5px dashed ${dragging ? '#c8a96e' : '#252530'}`,
-                borderRadius: 10, padding: '36px 24px',
-                cursor: uploading ? 'wait' : 'pointer', transition: 'all 0.2s ease',
-                background: dragging ? 'rgba(200,169,110,0.05)' : 'rgba(10,10,13,0.6)',
-                opacity: uploading ? 0.85 : 1,
-                pointerEvents: uploading ? 'none' : 'auto',
-            }}
+            className={`
+                relative flex flex-col items-center justify-center gap-3
+                rounded-xl p-9 transition-all duration-200 cursor-pointer
+                border border-dashed
+                ${dragging
+                    ? "border-[var(--accent)] bg-[var(--accent-dim)]"
+                    : "border-[var(--border-mid)] bg-[var(--bg-base)]"}
+                ${uploading ? "opacity-80 pointer-events-none cursor-wait" : ""}
+            `}
         >
-            <input ref={inputRef} type="file" accept=".pdf,.txt"
-                onChange={(e) => { const f = e.target.files[0]; if (f) onUpload(f); e.target.value = ''; }}
-                style={{ display: 'none' }} />
-            <div style={{
-                width: 44, height: 44, borderRadius: 10,
-                background: dragging ? 'rgba(200,169,110,0.1)' : '#111116',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: `1px solid ${dragging ? 'rgba(200,169,110,0.4)' : '#1e1e26'}`,
-                transition: 'all 0.2s',
-            }}>
+            <input
+                ref={inputRef} type="file" accept=".pdf,.txt"
+                onChange={(e) => { const f = e.target.files[0]; if (f) onUpload(f); e.target.value = ""; }}
+                className="hidden"
+            />
+            <div className={`
+                w-12 h-12 rounded-xl flex items-center justify-center
+                border transition-all duration-200
+                ${dragging
+                    ? "bg-[var(--accent-dim)] border-[var(--accent)]"
+                    : "bg-[var(--bg-elevated)] border-[var(--border-mid)]"}
+            `}>
                 {uploading
-                    ? <Loader2 size={20} style={{ color: '#c8a96e', animation: 'spin 1s linear infinite' }} />
-                    : <FileUp size={20} style={{ color: dragging ? '#c8a96e' : '#3a3a46' }} />}
+                    ? <Loader2 size={20} className="text-[var(--accent)] animate-spin" />
+                    : <FileUp size={20} className={dragging ? "text-[var(--accent)]" : "text-[var(--text-faint)]"} />}
             </div>
-            <div style={{ textAlign: 'center' }}>
-                <p style={{ fontSize: 13, color: '#e2e0db', margin: 0, fontFamily: "'DM Mono', monospace" }}>
-                    {uploading ? uploadProgress : dragging ? 'Drop to upload' : 'Drop file here'}
+            <div className="text-center">
+                <p className="text-sm text-[var(--text-primary)] font-mono m-0">
+                    {uploading ? uploadProgress : dragging ? "Drop to upload" : "Drop file here"}
                 </p>
-                <p style={{ fontSize: 11.5, color: '#48485a', marginTop: 4, fontFamily: "'DM Mono', monospace", letterSpacing: '0.02em' }}>
-                    {uploading ? 'Processing…' : 'click to browse · PDF & TXT'}
+                <p className="text-xs text-[var(--text-faint)] mt-1 tracking-wide font-mono">
+                    {uploading ? "Processing…" : "click to browse · PDF & TXT"}
                 </p>
             </div>
             {uploading && (
-                <div style={{ width: '100%', height: 1, background: '#1a1a22', borderRadius: 99, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', background: 'linear-gradient(90deg,#c8a96e,#d4b880)', borderRadius: 99, animation: 'shimmer 1.5s ease-in-out infinite' }} />
+                <div className="w-full h-0.5 bg-[var(--border)] rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] rounded-full animate-[shimmer_1.5s_ease-in-out_infinite]" />
                 </div>
             )}
         </div>
@@ -80,145 +89,122 @@ const UploadZone = ({ onUpload, uploading, uploadProgress }) => {
 /* ─────────────────────────────────────────
    Upload Panel / Modal
 ───────────────────────────────────────── */
-const UploadPanel = ({ onUpload, uploading, uploadProgress, onClose, files, selectedFile, onSelectFile, onReindex }) => (
-    <div
-        style={{
-            position: 'fixed', inset: 0, zIndex: 200,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(14px)',
-        }}
-        onClick={() => !uploading && onClose()}
-    >
+const UploadPanel = ({ onClose }) => {
+    const { handleUploadFile, uploading, uploadProgress, files, selectedFile, setSelectedFile, handleReindex } = useApp();
+
+    return (
         <div
-            style={{
-                position: 'relative', width: '100%', maxWidth: 400, margin: '0 16px',
-                background: '#0d0d10', border: '1px solid #1e1e26',
-                borderRadius: 14, padding: 24,
-                display: 'flex', flexDirection: 'column', gap: 18,
-                boxShadow: '0 32px 80px rgba(0,0,0,0.85)',
-                animation: 'modalIn 0.22s cubic-bezier(0.34,1.56,0.64,1)',
-                fontFamily: "'DM Mono', monospace",
-            }}
-            onClick={e => e.stopPropagation()}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-xl"
+            onClick={() => !uploading && onClose()}
         >
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                <div>
-                    <h2 style={{ fontSize: 15, fontWeight: 500, color: '#f0ede8', margin: 0, fontFamily: "'Fraunces', serif", fontStyle: 'italic' }}>Upload Document</h2>
-                    <p style={{ fontSize: 11, color: '#48485a', marginTop: 5, letterSpacing: '0.05em', textTransform: 'uppercase' }}>PDF or TXT · indexed automatically</p>
+            <div
+                className="relative w-full max-w-md mx-4 bg-[var(--bg-panel)] border border-[var(--border-mid)] rounded-2xl p-6 flex flex-col gap-5 shadow-2xl animate-[modalIn_0.22s_cubic-bezier(0.34,1.56,0.64,1)]"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex items-start justify-between">
+                    <div>
+                        <h2 className="text-sm font-medium text-[var(--text-primary)] m-0" style={{ fontFamily: "'Fraunces', serif", fontStyle: "italic" }}>
+                            Upload Document
+                        </h2>
+                        <p className="text-[10px] text-[var(--text-faint)] mt-1 tracking-widest uppercase font-mono">
+                            PDF or TXT · indexed automatically
+                        </p>
+                    </div>
+                    {!uploading && (
+                        <button
+                            onClick={onClose}
+                            className="p-1.5 rounded-lg bg-transparent border border-[var(--border-mid)] cursor-pointer text-[var(--text-muted)] flex items-center justify-center transition-all hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+                        >
+                            <X size={13} />
+                        </button>
+                    )}
                 </div>
-                {!uploading && (
-                    <button onClick={onClose} style={{
-                        padding: 7, borderRadius: 7, background: 'transparent',
-                        border: '1px solid #1e1e26', cursor: 'pointer', color: '#48485a',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
-                    }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#17171e'; e.currentTarget.style.color = '#e2e0db'; e.currentTarget.style.borderColor = '#2e2e3a'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#48485a'; e.currentTarget.style.borderColor = '#1e1e26'; }}>
-                        <X size={13} />
-                    </button>
+
+                <UploadZone onUpload={handleUploadFile} uploading={uploading} uploadProgress={uploadProgress} />
+
+                {!uploading && files.length > 0 && (
+                    <div>
+                        <p className="text-[10px] text-[var(--text-faint)] tracking-widest uppercase mb-2 font-mono">
+                            Indexed documents
+                        </p>
+                        <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+                            {files.map((f) => (
+                                <div key={f.name} className={`
+                                    flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-all
+                                    ${selectedFile === f.name
+                                        ? "bg-[var(--accent-dim)] border-[var(--accent)]/30"
+                                        : "border-transparent"}
+                                `}>
+                                    <button onClick={() => { setSelectedFile(f.name); onClose(); }} className={`
+                                        flex items-center gap-2 flex-1 text-left bg-transparent border-none cursor-pointer text-xs font-mono
+                                        ${selectedFile === f.name ? "text-[var(--accent)]" : "text-[var(--text-muted)]"}
+                                    `}>
+                                        <FileText size={11} className="flex-shrink-0" />
+                                        <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{f.name}</span>
+                                        {f.status === "indexing" && (
+                                            <span className="text-[10px] text-[var(--accent)]/60 flex items-center gap-1">
+                                                <Clock size={9} />indexing
+                                            </span>
+                                        )}
+                                        {f.status === "ready" && selectedFile === f.name && (
+                                            <CheckCircle size={11} className="text-[var(--accent)]" />
+                                        )}
+                                    </button>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleReindex(f.name); }}
+                                        title="Re-index"
+                                        className="p-1 rounded bg-transparent border-none cursor-pointer text-[var(--text-faint)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] transition-all"
+                                    >
+                                        <RefreshCw size={10} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 )}
             </div>
-
-            <UploadZone onUpload={onUpload} uploading={uploading} uploadProgress={uploadProgress} />
-
-            {!uploading && files.length > 0 && (
-                <div>
-                    <p style={{ fontSize: 10, color: '#38384a', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 9 }}>
-                        Indexed documents
-                    </p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 200, overflowY: 'auto' }}>
-                        {files.map(f => (
-                            <div key={f.name} style={{
-                                display: 'flex', alignItems: 'center', gap: 8,
-                                padding: '7px 10px', borderRadius: 7,
-                                background: selectedFile === f.name ? 'rgba(200,169,110,0.08)' : 'transparent',
-                                border: `1px solid ${selectedFile === f.name ? 'rgba(200,169,110,0.22)' : 'transparent'}`,
-                                transition: 'all 0.15s',
-                            }}>
-                                <button onClick={() => { onSelectFile(f.name); onClose(); }} style={{
-                                    display: 'flex', alignItems: 'center', gap: 8, flex: 1, textAlign: 'left',
-                                    background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12,
-                                    color: selectedFile === f.name ? '#c8a96e' : '#8a8a9a',
-                                    fontFamily: "'DM Mono', monospace",
-                                }}>
-                                    <FileText size={11} style={{ flexShrink: 0 }} />
-                                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                                    {f.status === 'indexing' && <span style={{ fontSize: 10, color: '#8a7040', display: 'flex', alignItems: 'center', gap: 3 }}><Clock size={9} />indexing</span>}
-                                    {f.status === 'ready' && selectedFile === f.name && <CheckCircle size={11} style={{ color: '#c8a96e' }} />}
-                                </button>
-                                <button onClick={(e) => { e.stopPropagation(); onReindex(f.name); }} title="Re-index" style={{
-                                    padding: 5, borderRadius: 5, background: 'transparent', border: '1px solid transparent',
-                                    cursor: 'pointer', color: '#38384a', display: 'flex', transition: 'all 0.15s',
-                                }}
-                                    onMouseEnter={e => { e.currentTarget.style.background = '#17171e'; e.currentTarget.style.color = '#7070808'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#38384a'; }}>
-                                    <RefreshCw size={10} />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
         </div>
-    </div>
-);
+    );
+};
 
 /* ─────────────────────────────────────────
-   PDF Viewer Panel
+   PDF Viewer Panel — uses getFileUrl
 ───────────────────────────────────────── */
-const PdfViewerPanel = ({ filename, apiBase, onClose }) => {
-    const pdfUrl = filename && filename.toLowerCase().endsWith('.pdf')
-        ? `${apiBase}/files/${encodeURIComponent(filename)}`
+const PdfViewerPanel = ({ filename, onClose }) => {
+    const { getFileUrl } = useApp();
+
+    const pdfUrl = filename && filename.toLowerCase().endsWith(".pdf")
+        ? getFileUrl(filename)
         : null;
 
     return (
-        <div style={{
-            display: 'flex', flexDirection: 'column', height: '100%',
-            background: '#09090c',
-        }}>
-            <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '0 16px', height: 48, flexShrink: 0,
-                borderBottom: '1px solid #1a1a22',
-                background: '#0d0d10',
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <FileSearch size={13} style={{ color: '#c8a96e' }} />
-                    <span style={{
-                        fontSize: 12, color: '#c8c6c1',
-                        fontFamily: "'DM Mono', monospace",
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260,
-                    }}>
-                        {filename || 'No file selected'}
+        <div className="flex flex-col h-full bg-[var(--bg-base)]">
+            <div className="flex items-center justify-between px-4 h-12 flex-shrink-0 border-b border-[var(--border)] bg-[var(--bg-panel)]">
+                <div className="flex items-center gap-2">
+                    <FileSearch size={13} className="text-[var(--accent)]" />
+                    <span className="text-xs text-[var(--text-body)] font-mono truncate max-w-[260px]">
+                        {filename || "No file selected"}
                     </span>
                 </div>
-                <button onClick={onClose} style={{
-                    padding: 6, borderRadius: 5, background: 'transparent',
-                    border: '1px solid #1e1e26', cursor: 'pointer', color: '#58586a',
-                    display: 'flex', transition: 'all 0.15s',
-                }}
-                    onMouseEnter={e => { e.currentTarget.style.color = '#e2e0db'; e.currentTarget.style.borderColor = '#3a3a48'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = '#58586a'; e.currentTarget.style.borderColor = '#1e1e26'; }}>
+                <button
+                    onClick={onClose}
+                    className="p-1.5 rounded bg-transparent border border-[var(--border)] cursor-pointer text-[var(--text-muted)] flex hover:text-[var(--text-primary)] hover:border-[var(--border-mid)] transition-all"
+                >
                     <X size={12} />
                 </button>
             </div>
-
-            <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+            <div className="flex-1 overflow-hidden relative">
                 {pdfUrl ? (
                     <iframe
                         src={pdfUrl}
                         title="PDF Viewer"
-                        style={{ width: '100%', height: '100%', border: 'none', background: '#09090c' }}
+                        className="w-full h-full border-none bg-white"
                     />
                 ) : (
-                    <div style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'center',
-                        justifyContent: 'center', height: '100%', gap: 12,
-                        color: '#38384a', fontFamily: "'DM Mono', monospace",
-                    }}>
-                        <FileSearch size={28} style={{ opacity: 0.25 }} />
-                        <p style={{ fontSize: 12, letterSpacing: '0.03em' }}>
-                            {filename ? 'PDF preview not available for .txt files' : 'No file selected'}
+                    <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--text-faint)] font-mono">
+                        <FileSearch size={28} className="opacity-25" />
+                        <p className="text-xs tracking-wide">
+                            {filename ? "PDF preview not available for .txt files" : "No file selected"}
                         </p>
                     </div>
                 )}
@@ -233,13 +219,13 @@ const PdfViewerPanel = ({ filename, apiBase, onClose }) => {
 function normaliseContent(text) {
     text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_, i) => `\n$$${i}$$\n`);
     text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_, i) => `$${i}$`);
-    text = text.replace(/(\$[^$\n]+?\$)\s*\1/g, '$1');
-    text = text.replace(/<br\s*\/?>/gi, ' · ');
+    text = text.replace(/(\$[^$\n]+?\$)\s*\1/g, "$1");
+    text = text.replace(/<br\s*\/?>/gi, " · ");
     return text;
 }
 
 /* ─────────────────────────────────────────
-   Markdown renderer — brighter text
+   Markdown renderer
 ───────────────────────────────────────── */
 const MarkdownMessage = ({ content }) => (
     <ReactMarkdown
@@ -247,44 +233,53 @@ const MarkdownMessage = ({ content }) => (
         rehypePlugins={[rehypeRaw, [rehypeKatex, { strict: false, throwOnError: false }]]}
         components={{
             div: ({ className, children, ...props }) => {
-                if (className?.includes('math-display')) return (
-                    <div style={{ margin: '14px 0', padding: '14px 18px', background: '#09090c', border: '1px solid #1e1e28', borderRadius: 7, overflowX: 'auto', textAlign: 'center' }} {...props}>{children}</div>
-                );
+                if (className?.includes("math-display"))
+                    return (
+                        <div className="my-3 px-4 py-3 bg-[var(--bg-base)] border border-[var(--border-mid)] rounded-lg overflow-x-auto text-center" {...props}>
+                            {children}
+                        </div>
+                    );
                 return <div className={className} {...props}>{children}</div>;
             },
             span: ({ className, children, ...props }) => {
-                if (className?.includes('math-inline')) return (
-                    <span style={{ padding: '2px 6px', borderRadius: 4, background: 'rgba(200,169,110,0.12)', color: '#c8a96e', fontFamily: "'DM Mono', monospace", fontSize: '0.875em' }} {...props}>{children}</span>
-                );
+                if (className?.includes("math-inline"))
+                    return (
+                        <span className="px-1.5 py-0.5 rounded bg-[var(--accent-dim)] text-[var(--accent)] font-mono text-[0.875em]" {...props}>
+                            {children}
+                        </span>
+                    );
                 return <span className={className} {...props}>{children}</span>;
             },
             table: ({ ...props }) => (
-                <div style={{ overflowX: 'auto', margin: '14px 0', borderRadius: 7, border: '1px solid #1e1e26', width: '100%' }}>
-                    <table style={{ borderCollapse: 'collapse', fontSize: 12.5, width: '100%', tableLayout: 'fixed', wordBreak: 'break-word', fontFamily: "'DM Mono', monospace" }} {...props} />
+                <div className="overflow-x-auto my-3 rounded-lg border border-[var(--border-mid)] w-full">
+                    <table className="border-collapse text-[12.5px] w-full font-mono" style={{ tableLayout: "fixed", wordBreak: "break-word" }} {...props} />
                 </div>
             ),
-            thead: ({ ...props }) => <thead style={{ background: '#111118' }} {...props} />,
-            th: ({ ...props }) => <th style={{ border: 'none', borderBottom: '1px solid #1e1e26', padding: '10px 14px', textAlign: 'left', fontWeight: 500, color: '#e2e0db', fontSize: 10.5, letterSpacing: '0.07em', textTransform: 'uppercase', background: '#111118', wordBreak: 'break-word' }} {...props} />,
-            td: ({ ...props }) => <td style={{ border: 'none', borderBottom: '1px solid #131318', padding: '9px 14px', color: '#b8b6b0', fontSize: 12.5, lineHeight: 1.65, background: 'transparent', wordBreak: 'break-word', verticalAlign: 'top' }} {...props} />,
-            tr: ({ ...props }) => <tr style={{ transition: 'background 0.12s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(200,169,110,0.03)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} {...props} />,
+            thead: ({ ...props }) => <thead className="bg-[var(--bg-elevated)]" {...props} />,
+            th: ({ ...props }) => <th className="border-none border-b border-[var(--border-mid)] px-3.5 py-2.5 text-left font-semibold text-[var(--text-primary)] text-[10.5px] tracking-widest uppercase" {...props} />,
+            td: ({ ...props }) => <td className="border-none border-b border-[var(--border)] px-3.5 py-2 text-[var(--text-body)] text-[12.5px] leading-relaxed align-top" style={{ wordBreak: "break-word" }} {...props} />,
+            tr: ({ ...props }) => <tr className="transition-colors hover:bg-[var(--accent-dim)]" {...props} />,
             tbody: ({ ...props }) => <tbody {...props} />,
-            code: ({ inline, children, ...props }) => inline
-                ? <code style={{ background: 'rgba(200,169,110,0.1)', padding: '2px 7px', borderRadius: 4, color: '#c8a96e', fontSize: '0.84em', fontFamily: "'DM Mono', monospace" }} {...props}>{children}</code>
-                : <pre style={{ background: '#09090c', border: '1px solid #1a1a22', borderRadius: 7, padding: '14px 16px', overflowX: 'auto', margin: '12px 0' }}>
-                    <code style={{ color: '#b8b6b0', fontSize: '0.8em', fontFamily: "'DM Mono', monospace", lineHeight: 1.75 }} {...props}>{children}</code>
-                </pre>,
-            h1: ({ ...props }) => <h1 style={{ fontSize: 17, fontWeight: 300, color: '#f0ede8', margin: '18px 0 6px', fontFamily: "'Fraunces', serif", fontStyle: 'italic' }} {...props} />,
-            h2: ({ ...props }) => <h2 style={{ fontSize: 14, fontWeight: 400, color: '#e2e0db', margin: '14px 0 5px', fontFamily: "'Fraunces', serif", fontStyle: 'italic' }} {...props} />,
-            h3: ({ ...props }) => <h3 style={{ fontSize: 12, fontWeight: 500, color: '#c8c6c1', margin: '12px 0 4px', fontFamily: "'DM Mono', monospace", letterSpacing: '0.06em', textTransform: 'uppercase' }} {...props} />,
-            ul: ({ ...props }) => <ul style={{ paddingLeft: 18, margin: '8px 0', display: 'flex', flexDirection: 'column', gap: 4 }} {...props} />,
-            ol: ({ ...props }) => <ol style={{ paddingLeft: 18, margin: '8px 0', display: 'flex', flexDirection: 'column', gap: 4 }} {...props} />,
-            li: ({ ...props }) => <li style={{ color: '#a8a6a0', lineHeight: 1.7, fontSize: 13 }} {...props} />,
-            p: ({ ...props }) => <p style={{ margin: '0 0 10px', color: '#b8b6b0', lineHeight: 1.75, fontSize: 13 }} {...props} />,
-            strong: ({ ...props }) => <strong style={{ fontWeight: 600, color: '#f0ede8' }} {...props} />,
-            em: ({ ...props }) => <em style={{ fontStyle: 'italic', color: '#9898a8', fontFamily: "'Fraunces', serif" }} {...props} />,
-            blockquote: ({ ...props }) => <blockquote style={{ borderLeft: '2px solid #c8a96e', margin: '12px 0', color: '#8a8a98', fontStyle: 'italic', background: 'rgba(200,169,110,0.04)', borderRadius: '0 7px 7px 0', padding: '10px 14px' }} {...props} />,
-            a: ({ ...props }) => <a style={{ color: '#c8a96e', textDecoration: 'underline', textUnderlineOffset: 3 }} target="_blank" rel="noopener noreferrer" {...props} />,
-            hr: ({ ...props }) => <hr style={{ border: 'none', borderTop: '1px solid #1a1a22', margin: '16px 0' }} {...props} />,
+            code: ({ inline, children, ...props }) =>
+                inline ? (
+                    <code className="bg-[var(--accent-dim)] px-1.5 py-0.5 rounded text-[var(--accent)] text-[0.84em] font-mono" {...props}>{children}</code>
+                ) : (
+                    <pre className="bg-[var(--code-bg)] border border-[var(--border)] rounded-lg px-4 py-3.5 overflow-x-auto my-3">
+                        <code className="text-[#cecdca] text-[0.8em] font-mono leading-7" {...props}>{children}</code>
+                    </pre>
+                ),
+            h1: ({ ...props }) => <h1 className="text-lg font-light text-[var(--text-primary)] mt-4 mb-1" style={{ fontFamily: "'Fraunces', serif", fontStyle: "italic" }} {...props} />,
+            h2: ({ ...props }) => <h2 className="text-sm font-normal text-[var(--text-primary)] mt-3 mb-1" style={{ fontFamily: "'Fraunces', serif", fontStyle: "italic" }} {...props} />,
+            h3: ({ ...props }) => <h3 className="text-[12.5px] font-semibold text-[var(--text-body)] mt-3 mb-1 font-mono tracking-widest uppercase" {...props} />,
+            ul: ({ ...props }) => <ul className="pl-4 my-2 flex flex-col gap-1" {...props} />,
+            ol: ({ ...props }) => <ol className="pl-4 my-2 flex flex-col gap-1" {...props} />,
+            li: ({ ...props }) => <li className="text-[var(--text-body)] leading-7 text-[13.5px]" {...props} />,
+            p: ({ ...props }) => <p className="mb-2.5 text-[var(--text-body)] leading-relaxed text-[13.5px]" {...props} />,
+            strong: ({ ...props }) => <strong className="font-bold text-[var(--text-primary)]" {...props} />,
+            em: ({ ...props }) => <em className="italic text-[var(--text-muted)]" style={{ fontFamily: "'Fraunces', serif" }} {...props} />,
+            blockquote: ({ ...props }) => <blockquote className="border-l-2 border-[var(--accent)] ml-0 text-[var(--text-muted)] italic bg-[var(--accent-dim)] rounded-r-lg px-3.5 py-2.5 my-3" {...props} />,
+            a: ({ ...props }) => <a className="text-[var(--accent)] underline underline-offset-2" target="_blank" rel="noopener noreferrer" {...props} />,
+            hr: ({ ...props }) => <hr className="border-none border-t border-[var(--border)] my-4" {...props} />,
         }}
     >
         {normaliseContent(content)}
@@ -298,24 +293,18 @@ const ThinkBlock = ({ thinking, done }) => {
     const [open, setOpen] = useState(false);
     const secs = Math.max(1, Math.round(thinking.length / 200));
     return (
-        <div style={{ marginBottom: 10 }}>
-            <button onClick={() => setOpen(o => !o)} style={{
-                display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none',
-                cursor: 'pointer', padding: '3px 0', color: done ? '#7a7a8a' : '#8a7040',
-                fontSize: 11, fontFamily: "'DM Mono', monospace", letterSpacing: '0.03em',
-            }}>
+        <div className="mb-2.5">
+            <button
+                onClick={() => setOpen((o) => !o)}
+                className={`flex items-center gap-1.5 bg-transparent border-none cursor-pointer p-0 text-[11px] font-mono tracking-wide ${done ? "text-[var(--text-faint)]" : "text-[var(--accent)]/70"}`}
+            >
                 {!done
-                    ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite', color: '#c8a96e' }} />
-                    : <span style={{ fontSize: 10 }}>{open ? '▲' : '▼'}</span>}
-                {done ? `Thought for ${secs}s` : 'Thinking…'}
+                    ? <Loader2 size={11} className="animate-spin text-[var(--accent)]" />
+                    : <span className="text-[10px]">{open ? "▲" : "▼"}</span>}
+                {done ? `Thought for ${secs}s` : "Thinking…"}
             </button>
             {open && done && (
-                <div style={{
-                    marginTop: 6, padding: '10px 14px',
-                    background: '#09090c', border: '1px solid #1a1a22', borderRadius: 7,
-                    fontSize: 11.5, color: '#5a5a6a', fontFamily: "'DM Mono', monospace",
-                    lineHeight: 1.7, whiteSpace: 'pre-wrap',
-                }}>
+                <div className="mt-1.5 px-3.5 py-2.5 bg-[var(--bg-base)] border border-[var(--border)] rounded-lg text-[11.5px] text-[var(--text-muted)] font-mono leading-7 whitespace-pre-wrap">
                     {thinking}
                 </div>
             )}
@@ -327,12 +316,9 @@ const ThinkBlock = ({ thinking, done }) => {
    Typing dots
 ───────────────────────────────────────── */
 const TypingDots = () => (
-    <div style={{ display: 'flex', gap: 5, alignItems: 'center', padding: '5px 0' }}>
+    <div className="flex gap-1.5 items-center py-1">
         {[0, 140, 280].map((delay, i) => (
-            <span key={i} style={{
-                width: 5, height: 5, borderRadius: '50%', background: '#3a3a4a',
-                animation: `bounce 1.2s ease-in-out ${delay}ms infinite`, display: 'block',
-            }} />
+            <span key={i} className="w-1.5 h-1.5 rounded-full bg-[var(--text-faint)] block animate-[bounce_1.2s_ease-in-out_infinite]" style={{ animationDelay: `${delay}ms` }} />
         ))}
     </div>
 );
@@ -341,58 +327,46 @@ const TypingDots = () => (
    FileOption
 ───────────────────────────────────────── */
 const FileOption = ({ name, status, selected, onSelect, onDelete }) => (
-    <div style={{
-        display: 'flex', alignItems: 'center', gap: 2, width: '100%',
-        background: selected ? 'rgba(200,169,110,0.08)' : 'transparent',
-        transition: 'background 0.12s',
-    }}
-        onMouseEnter={e => { if (!selected) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
-        onMouseLeave={e => { if (!selected) e.currentTarget.style.background = 'transparent'; }}>
-        <button onClick={onSelect} style={{
-            flex: 1, textAlign: 'left', padding: '8px 10px 8px 14px', fontSize: 12,
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: 'transparent',
-            color: selected ? '#c8a96e' : '#8a8a9a', border: 'none', cursor: 'pointer',
-            fontFamily: "'DM Mono', monospace", letterSpacing: '0.01em', overflow: 'hidden'
-        }}>
-            <FileText size={11} style={{ flexShrink: 0 }} />
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-            {status === 'indexing' && <Clock size={10} style={{ color: '#8a7040', flexShrink: 0 }} />}
-            {selected && status !== 'indexing' && <CheckCircle size={11} style={{ flexShrink: 0, color: '#c8a96e' }} />}
+    <div className={`flex items-center gap-0.5 w-full transition-colors ${selected ? "bg-[var(--accent-dim)]" : "hover:bg-[var(--bg-elevated)]"}`}>
+        <button onClick={onSelect} className={`
+            flex-1 text-left px-3.5 py-2 text-xs flex items-center gap-2
+            bg-transparent border-none cursor-pointer font-mono tracking-wide overflow-hidden
+            ${selected ? "text-[var(--accent)]" : "text-[var(--text-muted)]"}
+        `}>
+            <FileText size={11} className="flex-shrink-0" />
+            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{name}</span>
+            {status === "indexing" && <Clock size={10} className="text-[var(--accent)]/60 flex-shrink-0" />}
+            {selected && status !== "indexing" && <CheckCircle size={11} className="flex-shrink-0 text-[var(--accent)]" />}
         </button>
-
-        {/* Delete Button */}
         <button
             onClick={(e) => { e.stopPropagation(); onDelete(name); }}
             title="Delete document"
-            style={{
-                padding: '8px 12px', background: 'transparent', border: 'none',
-                cursor: 'pointer', color: '#38384a', display: 'flex', transition: 'all 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#38384a'; }}
+            className="px-3 py-2 bg-transparent border-none cursor-pointer text-[var(--text-faint)] flex hover:text-red-500 transition-colors"
         >
             <Trash2 size={11} />
         </button>
     </div>
 );
+
 /* ─────────────────────────────────────────
    Suggested Questions
 ───────────────────────────────────────── */
 const SuggestedQuestions = ({ file, onSelect }) => {
     if (!file) return null;
-    const prompts = ['Summarize this document', 'What are the key findings?', 'List all tables and figures', 'What are the main conclusions?'];
+    const prompts = [
+        "Summarize this document",
+        "What are the key findings?",
+        "List all tables and figures",
+        "What are the main conclusions?",
+    ];
     return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 520 }}>
-            {prompts.map(p => (
-                <button key={p} onClick={() => onSelect(p)} style={{
-                    padding: '7px 15px', borderRadius: 5,
-                    background: 'rgba(200,169,110,0.06)', border: '1px solid rgba(200,169,110,0.18)',
-                    color: '#c8a96e', fontSize: 11.5, cursor: 'pointer',
-                    fontFamily: "'DM Mono', monospace", letterSpacing: '0.03em', transition: 'all 0.15s',
-                }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(200,169,110,0.12)'; e.currentTarget.style.borderColor = 'rgba(200,169,110,0.35)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(200,169,110,0.06)'; e.currentTarget.style.borderColor = 'rgba(200,169,110,0.18)'; }}>
+        <div className="flex flex-wrap gap-2 justify-center max-w-lg">
+            {prompts.map((p) => (
+                <button
+                    key={p}
+                    onClick={() => onSelect(p)}
+                    className="px-4 py-2 rounded-md bg-[var(--accent-dim)] border border-[var(--accent)]/25 text-[var(--accent)] text-xs cursor-pointer font-mono tracking-wide transition-all hover:bg-[var(--accent)]/20 hover:border-[var(--accent)]/50"
+                >
                     {p}
                 </button>
             ))}
@@ -404,37 +378,51 @@ const SuggestedQuestions = ({ file, onSelect }) => {
    Panel Tab Button
 ───────────────────────────────────────── */
 const PanelTabBtn = ({ active, onClick, children }) => (
-    <button onClick={onClick} style={{
-        display: 'flex', alignItems: 'center', gap: 5,
-        padding: '5px 12px', borderRadius: 5, fontSize: 11.5, cursor: 'pointer',
-        fontFamily: "'DM Mono', monospace", letterSpacing: '0.03em',
-        background: active ? 'rgba(200,169,110,0.1)' : 'transparent',
-        border: `1px solid ${active ? 'rgba(200,169,110,0.28)' : '#1e1e26'}`,
-        color: active ? '#c8a96e' : '#58586a',
-        transition: 'all 0.15s',
-    }}
-        onMouseEnter={e => { if (!active) { e.currentTarget.style.background = '#17171e'; e.currentTarget.style.borderColor = '#2a2a36'; e.currentTarget.style.color = '#e2e0db'; } }}
-        onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#1e1e26'; e.currentTarget.style.color = '#58586a'; } }}>
+    <button
+        onClick={onClick}
+        className={`
+            flex items-center gap-1 px-3 py-1.5 rounded-md text-[11.5px] cursor-pointer font-mono tracking-wide transition-all
+            ${active
+                ? "bg-[var(--accent-dim)] border border-[var(--accent)]/35 text-[var(--accent)]"
+                : "bg-transparent border border-[var(--border-mid)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:border-[var(--border)] hover:text-[var(--text-body)]"}
+        `}
+    >
         {children}
     </button>
 );
 
 /* ─────────────────────────────────────────
+   Theme Toggle Button
+───────────────────────────────────────── */
+const ThemeToggle = () => {
+    const { isDark, toggleTheme } = useTheme();
+    return (
+        <button
+            onClick={toggleTheme}
+            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-transparent border border-[var(--border-mid)] text-[var(--text-muted)] text-[11px] font-mono cursor-pointer transition-all hover:bg-[var(--bg-elevated)] hover:text-[var(--text-body)] hover:border-[var(--border)]"
+        >
+            {isDark ? <Sun size={12} /> : <Moon size={12} />}
+            {isDark ? "Light" : "Dark"}
+        </button>
+    );
+};
+
+/* ─────────────────────────────────────────
    Main Chatbot
 ───────────────────────────────────────── */
 const Chatbot = () => {
-    const [messages, setMessages] = useState([{
-        id: 1, type: 'bot',
-        content: 'Upload a PDF or TXT and start querying.',
-        timestamp: new Date(), images: [],
-    }]);
-    const [inputValue, setInputValue] = useState('');
+    const navigate = useNavigate();
+    const {
+        files, selectedFile, setSelectedFile,
+        uploading, uploadProgress,
+        handleUploadFile, handleDeleteFile, handleReindex,
+        messages, setMessages, resetChat,
+    } = useApp();
+
+    const [inputValue, setInputValue] = useState("");
     const [isTyping, setIsTyping] = useState(false);
     const [activePanel, setActivePanel] = useState(null);
-    const [files, setFiles] = useState([]);
-    const [selectedFile, setSelectedFile] = useState('');
-    const [uploading, setUploading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState('Uploading…');
     const [showDropdown, setShowDropdown] = useState(false);
     const [showUploadPanel, setShowUploadPanel] = useState(false);
     const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -445,7 +433,7 @@ const Chatbot = () => {
     const textareaRef = useRef(null);
     const isAtBottomRef = useRef(true);
 
-    const scrollToBottom = useCallback((behavior = 'smooth') => {
+    const scrollToBottom = useCallback((behavior = "smooth") => {
         messagesEndRef.current?.scrollIntoView({ behavior });
     }, []);
 
@@ -463,138 +451,58 @@ const Chatbot = () => {
         else setUserScrolled(true);
     }, [checkIsAtBottom]);
 
-    useEffect(() => { if (!userScrolled) scrollToBottom('smooth'); }, [messages, userScrolled, scrollToBottom]);
-    useEffect(() => { if (isTyping && isAtBottomRef.current) scrollToBottom('auto'); }, [messages, isTyping, scrollToBottom]);
+    useEffect(() => { if (!userScrolled) scrollToBottom("smooth"); }, [messages, userScrolled, scrollToBottom]);
+    useEffect(() => { if (isTyping && isAtBottomRef.current) scrollToBottom("auto"); }, [messages, isTyping, scrollToBottom]);
     useEffect(() => {
         if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
+            textareaRef.current.style.height = "auto";
             textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
         }
     }, [inputValue]);
-    useEffect(() => { fetchFiles(); }, []);
 
-    useEffect(() => {
-        const indexingFiles = files.filter(f => f.status === 'indexing');
-        if (indexingFiles.length === 0) return;
-        const interval = setInterval(async () => {
-            let anyChange = false;
-            const updated = await Promise.all(files.map(async f => {
-                if (f.status !== 'indexing') return f;
-                try {
-                    const res = await axios.get(`${API}/status/${encodeURIComponent(f.name)}`);
-                    if (res.data.status !== f.status) anyChange = true;
-                    return { ...f, status: res.data.status };
-                } catch { return f; }
-            }));
-            if (anyChange) setFiles(updated);
-        }, 3000);
-        return () => clearInterval(interval);
-    }, [files]);
-
-    const handleDeleteFile = async (filename) => {
-        if (!window.confirm(`Are you sure you want to permanently delete "${filename}"? This will remove the index, the file, and all associated images.`)) {
-            return;
-        }
-
-        try {
-            const res = await axios.post(`${API}/delete`, { filename });
-            if (res.data.status === 'deleted' || res.data.status === 'success') {
-                // Update local file list
-                setFiles(prev => prev.filter(f => f.name !== filename));
-
-                // If the deleted file was selected, select the first available or clear it
-                if (selectedFile === filename) {
-                    const remaining = files.filter(f => f.name !== filename);
-                    setSelectedFile(remaining.length > 0 ? remaining[0].name : '');
-                }
-
-                setMessages(prev => [...prev, {
-                    id: Date.now(),
-                    type: 'bot',
-                    content: `**"${filename}"** has been permanently deleted.`,
-                    timestamp: new Date(),
-                    images: []
-                }]);
-            }
-        } catch (err) {
-            console.error("Delete failed:", err);
-            alert(`Failed to delete file: ${err.response?.data?.error || err.message}`);
-        }
-    };
-
-    const fetchFiles = async () => {
-        try {
-            const res = await axios.get(`${API}/files`);
-            const raw = res.data.files || [];
-            const list = raw.map(f => typeof f === 'string' ? { name: f, status: 'ready' } : { name: f.name, status: f.status || 'ready' });
-            setFiles(list);
-            if (list.length > 0 && !selectedFile) setSelectedFile(list[0].name);
-        } catch (e) { console.error('Failed to fetch files:', e); }
-    };
-
-    const handleReindex = async (filename) => {
-        try {
-            await axios.post(`${API}/reindex`, { filename });
-            setFiles(prev => prev.map(f => f.name === filename ? { ...f, status: 'indexing' } : f));
-            setMessages(prev => [...prev, { id: Date.now(), type: 'bot', content: `Re-indexing **"${filename}"** started.`, timestamp: new Date(), images: [] }]);
-        } catch (err) {
-            setMessages(prev => [...prev, { id: Date.now(), type: 'bot', content: `Re-index failed: ${err.response?.data?.error || err.message}`, timestamp: new Date(), images: [] }]);
-        }
-    };
-
-    const handleUploadFile = async (file) => {
-        if (!file) return;
-        const ext = '.' + file.name.split('.').pop().toLowerCase();
-        if (!['.pdf', '.txt'].includes(ext)) { alert('Only PDF and TXT files are supported.'); return; }
-        setUploading(true);
-        setUploadProgress('Uploading file…');
-        const formData = new FormData();
-        formData.append('file', file);
-        try {
-            const progressTimer = setTimeout(() => setUploadProgress('Indexing document…'), 1500);
-            const res = await axios.post(`${API}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-            clearTimeout(progressTimer);
-            const uploaded = res.data.file;
-            await fetchFiles();
-            setSelectedFile(uploaded);
-            setShowUploadPanel(false);
-            setMessages(prev => [...prev, { id: Date.now(), type: 'bot', content: `**"${uploaded}"** uploaded and indexed. You can now query it.`, timestamp: new Date(), images: [] }]);
-        } catch (err) {
-            setMessages(prev => [...prev, { id: Date.now(), type: 'bot', content: `Upload failed: ${err.response?.data?.error || err.message}`, timestamp: new Date(), images: [] }]);
-        } finally {
-            setUploading(false);
-            setUploadProgress('Uploading…');
-        }
-    };
-
+    /* ── Send ── */
     const handleSend = async (overrideText) => {
         const text = overrideText || inputValue;
         if (!text.trim()) return;
         if (!selectedFile) {
-            setMessages(prev => [...prev, { id: Date.now(), type: 'bot', content: 'Please upload or select a file first.', timestamp: new Date(), images: [] }]);
+            setMessages((prev) => [...prev, {
+                id: Date.now(), type: "bot",
+                content: "Please upload or select a file first.",
+                timestamp: new Date(),
+            }]);
             return;
         }
-        const userMsg = { id: Date.now(), type: 'user', content: text, timestamp: new Date() };
-        setMessages(prev => [...prev, userMsg]);
-        setInputValue('');
+        const userMsg = { id: Date.now(), type: "user", content: text, timestamp: new Date() };
+        setMessages((prev) => [...prev, userMsg]);
+        setInputValue("");
         setIsTyping(true);
         setUserScrolled(false);
         isAtBottomRef.current = true;
 
         const botId = Date.now() + 1;
-        setMessages(prev => [...prev, { id: botId, type: 'bot', content: '', timestamp: new Date(), images: [], thinking: '', thinkDone: false }]);
+        setMessages((prev) => [...prev, {
+            id: botId, type: "bot", content: "", timestamp: new Date(), thinking: "", thinkDone: false,
+        }]);
 
         try {
             const response = await fetch(`${API}/generate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: userMsg.content, filename: selectedFile, temperature: 0.4, max_output_tokens: 1024, top_p: 0.9 })
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    prompt: userMsg.content,
+                    filename: selectedFile,
+                    temperature: 0.4,
+                    max_output_tokens: 1024,
+                    top_p: 0.9,
+                }),
             });
 
-            const contentType = response.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) {
+            const contentType = response.headers.get("content-type") || "";
+            if (contentType.includes("application/json")) {
                 const data = await response.json();
-                setMessages(prev => prev.map(msg => msg.id === botId ? { ...msg, content: data.response || '' } : msg));
+                setMessages((prev) =>
+                    prev.map((msg) => msg.id === botId ? { ...msg, content: data.response || "" } : msg)
+                );
                 return;
             }
 
@@ -603,60 +511,78 @@ const Chatbot = () => {
             const CHARS_PER_TICK = 2;
             const drip = setInterval(() => {
                 if (tokenQueue.length === 0) return;
-                const chunk = tokenQueue.splice(0, CHARS_PER_TICK).join('');
-                setMessages(prev => prev.map(msg => msg.id === botId ? { ...msg, content: msg.content + chunk } : msg));
-                if (isAtBottomRef.current) scrollToBottom('auto');
+                const chunk = tokenQueue.splice(0, CHARS_PER_TICK).join("");
+                setMessages((prev) =>
+                    prev.map((msg) => msg.id === botId ? { ...msg, content: msg.content + chunk } : msg)
+                );
+                if (isAtBottomRef.current) scrollToBottom("auto");
             }, DRIP_INTERVAL);
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
-            let buffer = '';
+            let buffer = "";
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
                 buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
+                const lines = buffer.split("\n");
                 buffer = lines.pop();
 
                 for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
+                    if (!line.startsWith("data: ")) continue;
                     const data = line.slice(6).trim();
-                    if (data === '[DONE]') break;
+                    if (data === "[DONE]") break;
                     try {
                         const json = JSON.parse(data);
-                        if (json.images) { setMessages(prev => prev.map(msg => msg.id === botId ? { ...msg, images: json.images } : msg)); continue; }
-                        if (json.think_token) { setMessages(prev => prev.map(msg => msg.id === botId ? { ...msg, thinking: (msg.thinking || '') + json.think_token } : msg)); continue; }
-                        if (json.think_end) { setMessages(prev => prev.map(msg => msg.id === botId ? { ...msg, thinkDone: true } : msg)); continue; }
-                        const token = json.token || '';
-                        if (token) tokenQueue.push(...token.split(''));
+                        if (json.images) continue;
+                        if (json.think_token) {
+                            setMessages((prev) =>
+                                prev.map((msg) =>
+                                    msg.id === botId
+                                        ? { ...msg, thinking: (msg.thinking || "") + json.think_token }
+                                        : msg
+                                )
+                            );
+                            continue;
+                        }
+                        if (json.think_end) {
+                            setMessages((prev) =>
+                                prev.map((msg) => msg.id === botId ? { ...msg, thinkDone: true } : msg)
+                            );
+                            continue;
+                        }
+                        const token = json.token || "";
+                        if (token) tokenQueue.push(...token.split(""));
                     } catch { }
                 }
             }
 
-            await new Promise(resolve => {
+            await new Promise((resolve) => {
                 const drain = setInterval(() => {
                     if (tokenQueue.length === 0) { clearInterval(drain); resolve(); return; }
-                    const chunk = tokenQueue.splice(0, CHARS_PER_TICK).join('');
-                    setMessages(prev => prev.map(msg => msg.id === botId ? { ...msg, content: msg.content + chunk } : msg));
-                    if (isAtBottomRef.current) scrollToBottom('auto');
+                    const chunk = tokenQueue.splice(0, CHARS_PER_TICK).join("");
+                    setMessages((prev) =>
+                        prev.map((msg) => msg.id === botId ? { ...msg, content: msg.content + chunk } : msg)
+                    );
+                    if (isAtBottomRef.current) scrollToBottom("auto");
                 }, DRIP_INTERVAL);
             });
             clearInterval(drip);
         } catch (error) {
-            setMessages(prev => prev.map(msg => msg.id === botId ? { ...msg, content: `Error: ${error.message}` } : msg));
+            setMessages((prev) =>
+                prev.map((msg) => msg.id === botId ? { ...msg, content: `Error: ${error.message}` } : msg)
+            );
         } finally {
             setIsTyping(false);
         }
     };
 
     const handleKeyDown = (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
     };
 
-    const togglePanel = (panel) => {
-        setActivePanel(prev => prev === panel ? null : panel);
-    };
+    const togglePanel = (panel) => setActivePanel((prev) => (prev === panel ? null : panel));
 
     const isEmpty = files.length === 0 && messages.length <= 1;
     const hasFileButEmpty = files.length > 0 && messages.length <= 1;
@@ -669,138 +595,130 @@ const Chatbot = () => {
             <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;1,9..144,300&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
 
             <style>{`
-                * { box-sizing: border-box; margin: 0; padding: 0; }
-                ::-webkit-scrollbar { width: 4px; height: 4px; }
-                ::-webkit-scrollbar-track { background: transparent; }
-                ::-webkit-scrollbar-thumb { background: #1e1e28; border-radius: 99px; }
-                ::-webkit-scrollbar-thumb:hover { background: #2e2e3e; }
-                @keyframes spin { to { transform: rotate(360deg); } }
-                @keyframes bounce { 0%,80%,100% { transform:translateY(0);opacity:0.3; } 40% { transform:translateY(-4px);opacity:1; } }
-                @keyframes shimmer { 0% { opacity:0.4; } 50% { opacity:1; } 100% { opacity:0.4; } }
-                @keyframes modalIn { from { opacity:0;transform:scale(0.96) translateY(8px); } to { opacity:1;transform:scale(1) translateY(0); } }
-                @keyframes fadeSlideUp { from { opacity:0;transform:translateY(10px); } to { opacity:1;transform:translateY(0); } }
-                @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
-                @keyframes scrollBtnIn { from { opacity:0;transform:translateX(-50%) translateY(8px); } to { opacity:1;transform:translateX(-50%) translateY(0); } }
+                @keyframes shimmer { 0%,100%{opacity:.4} 50%{opacity:1} }
+                @keyframes modalIn { from{opacity:0;transform:scale(.96) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
+                @keyframes fadeSlideUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+                @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+                @keyframes scrollBtnIn { from{opacity:0;transform:translateX(-50%) translateY(8px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+                @keyframes bounce { 0%,80%,100%{transform:translateY(0);opacity:.35} 40%{transform:translateY(-5px);opacity:1} }
                 .cb-msg-bot { animation: fadeSlideUp 0.22s ease forwards; }
                 .cb-msg-user { animation: fadeSlideUp 0.16s ease forwards; }
-                .cb-send-btn:not(:disabled):hover { background: #d4b880 !important; }
-                .cb-send-btn:not(:disabled):active { transform: scale(0.92); }
-                .cb-input-area:focus-within { border-color: rgba(200,169,110,0.38) !important; box-shadow: 0 0 0 3px rgba(200,169,110,0.06) !important; }
-                .cb-topbar-btn:hover { background: #17171e !important; color: #e2e0db !important; border-color: #2a2a36 !important; }
+                ::-webkit-scrollbar { width: 4px; height: 4px; }
+                ::-webkit-scrollbar-track { background: transparent; }
+                ::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 99px; }
+                ::-webkit-scrollbar-thumb:hover { background: var(--border-mid); }
             `}</style>
 
-            <div style={{
-                position: 'relative', display: 'flex', flexDirection: 'column',
-                height: '100vh', background: '#0d0d10',
-                fontFamily: "'DM Mono', monospace", color: '#e2e0db', overflow: 'hidden',
-            }}>
-                {showUploadPanel && (
-                    <UploadPanel
-                        onUpload={handleUploadFile} uploading={uploading} uploadProgress={uploadProgress}
-                        onClose={() => setShowUploadPanel(false)} files={files}
-                        selectedFile={selectedFile} onSelectFile={setSelectedFile} onReindex={handleReindex}
-                    />
-                )}
+            <div
+                className="relative flex flex-col h-screen overflow-hidden font-mono"
+                style={{
+                    background: "var(--bg-surface)",
+                    color: "var(--text-body)",
+                    fontFamily: "'DM Mono', monospace",
+                }}
+            >
+                {/* Background gradient */}
+                <div className="fixed inset-0 pointer-events-none z-0"
+                    style={{ backgroundImage: "radial-gradient(circle at 20% 20%, var(--accent-dim) 0%, transparent 60%), radial-gradient(circle at 80% 80%, rgba(100,120,200,0.03) 0%, transparent 60%)" }} />
+
+                {showUploadPanel && <UploadPanel onClose={() => setShowUploadPanel(false)} />}
 
                 {/* ── Top Bar ── */}
-                <div style={{
-                    borderBottom: '1px solid #181820', padding: '0 16px', height: 52,
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    flexShrink: 0, background: '#0d0d10', position: 'sticky', top: 0, zIndex: 100,
-                }}>
+                <div className="border-b border-[var(--border)] px-4 h-14 flex items-center justify-between flex-shrink-0 sticky top-0 z-[100] backdrop-blur-xl"
+                    style={{ background: "rgba(var(--bg-panel-rgb, 13,13,18), 0.95)", backgroundColor: "var(--bg-panel)" }}>
+
                     {/* Brand */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                        <span style={{ color: '#c8a96e', fontSize: 17, lineHeight: 1 }}>◈</span>
-                        <span style={{ fontSize: 14, fontWeight: 500, color: '#f0ede8', fontFamily: "'Fraunces', serif", letterSpacing: '0.01em' }}>
-                            CMTI Bot
-                        </span>
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-[var(--accent-dim)] border border-[var(--accent)]/30 flex items-center justify-center">
+                            <span className="text-[var(--accent)] text-base leading-none">◈</span>
+                        </div>
+                        <div>
+                            <div className="text-[13.5px] font-medium text-[var(--text-primary)]" style={{ fontFamily: "'Fraunces', serif" }}>
+                                CMTI Bot
+                            </div>
+                            <div className="text-[9.5px] text-[var(--text-faint)] tracking-widest uppercase font-mono">
+                                Document Intelligence
+                            </div>
+                        </div>
                     </div>
 
                     {/* Right controls */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div className="flex items-center gap-1.5">
+                        <ThemeToggle />
+
                         {/* New Chat */}
-                        <button className="cb-topbar-btn" onClick={() => {
-                            setMessages([{ id: 1, type: 'bot', content: 'Upload a PDF or TXT and start querying.', timestamp: new Date(), images: [] }]);
-                            setInputValue(''); setUserScrolled(false);
-                        }} style={{
-                            display: 'flex', alignItems: 'center', gap: 5,
-                            background: 'transparent', border: '1px solid #1e1e26',
-                            color: '#78788a', padding: '5px 11px', borderRadius: 5,
-                            fontSize: 11.5, cursor: 'pointer', fontFamily: "'DM Mono', monospace", transition: 'all 0.15s',
-                        }}>
+                        <button
+                            onClick={resetChat}
+                            className="flex items-center gap-1 bg-transparent border border-[var(--border-mid)] text-[var(--text-muted)] px-3 py-1.5 rounded-md text-[11.5px] cursor-pointer font-mono transition-all hover:bg-[var(--bg-elevated)] hover:text-[var(--text-body)] hover:border-[var(--border)]"
+                        >
                             <Plus size={11} />New chat
                         </button>
 
                         {selectedFile && (
                             <>
-                                <PanelTabBtn active={activePanel === 'pdf'} onClick={() => togglePanel('pdf')}>
+                                <PanelTabBtn active={activePanel === "pdf"} onClick={() => togglePanel("pdf")}>
                                     <FileSearch size={11} />PDF
                                 </PanelTabBtn>
-                                <PanelTabBtn active={activePanel === 'report'} onClick={() => togglePanel('report')}>
+
+                                <button
+                                    onClick={() => navigate("/report")}
+                                    className="flex items-center gap-1 px-3 py-1.5 rounded-md text-[11.5px] cursor-pointer font-mono bg-[var(--teal-dim)] border border-[var(--teal)]/25 text-[var(--teal)] transition-all hover:bg-[var(--teal)]/15 hover:border-[var(--teal)]/45"
+                                >
                                     <FileText size={11} />Report
-                                </PanelTabBtn>
+                                </button>
                             </>
                         )}
 
                         {/* Upload */}
-                        <button onClick={() => setShowUploadPanel(true)} disabled={uploading} style={{
-                            display: 'flex', alignItems: 'center', gap: 5,
-                            background: uploading ? 'transparent' : 'rgba(200,169,110,0.08)',
-                            border: `1px solid ${uploading ? '#1e1e26' : 'rgba(200,169,110,0.25)'}`,
-                            color: uploading ? '#48485a' : '#c8a96e',
-                            padding: '5px 11px', borderRadius: 5,
-                            fontSize: 11.5, cursor: uploading ? 'wait' : 'pointer',
-                            opacity: uploading ? 0.6 : 1, fontFamily: "'DM Mono', monospace", transition: 'all 0.15s',
-                        }}
-                            onMouseEnter={e => { if (!uploading) { e.currentTarget.style.background = 'rgba(200,169,110,0.14)'; } }}
-                            onMouseLeave={e => { if (!uploading) e.currentTarget.style.background = 'rgba(200,169,110,0.08)'; }}>
-                            {uploading ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Upload size={11} />}
-                            {uploading ? 'Indexing…' : 'Upload'}
+                        <button
+                            onClick={() => setShowUploadPanel(true)}
+                            disabled={uploading}
+                            className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-[11.5px] font-mono transition-all ${uploading
+                                ? "bg-transparent border border-[var(--border-mid)] text-[var(--text-faint)] opacity-70 cursor-wait"
+                                : "bg-[var(--accent-dim)] border border-[var(--accent)]/32 text-[var(--accent)] cursor-pointer hover:bg-[var(--accent)]/18"
+                                }`}
+                        >
+                            {uploading ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
+                            {uploading ? "Indexing…" : "Upload"}
                         </button>
 
                         {/* File selector dropdown */}
-                        <div style={{ position: 'relative' }}>
-                            {showDropdown && <div style={{ position: 'fixed', inset: 0, zIndex: 1 }} onClick={() => setShowDropdown(false)} />}
-                            <button onClick={() => setShowDropdown(p => !p)} style={{
-                                position: 'relative', zIndex: 3,
-                                display: 'flex', alignItems: 'center', gap: 7,
-                                background: showDropdown ? '#17171e' : 'transparent',
-                                border: `1px solid ${showDropdown ? '#2a2a38' : '#1e1e26'}`,
-                                color: '#c8c6c1', padding: '5px 11px', borderRadius: 5,
-                                fontSize: 11.5, cursor: 'pointer', fontFamily: "'DM Mono', monospace",
-                                maxWidth: 210, transition: 'all 0.15s',
-                            }}>
-                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#c8a96e', flexShrink: 0 }} />
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, maxWidth: 140 }}>
-                                    {selectedFile || 'No file'}
+                        <div className="relative">
+                            {showDropdown && (
+                                <div className="fixed inset-0 z-[1]" onClick={() => setShowDropdown(false)} />
+                            )}
+                            <button
+                                onClick={() => setShowDropdown((p) => !p)}
+                                className={`relative z-[3] flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11.5px] font-mono max-w-[220px] transition-all border
+                                    ${showDropdown
+                                        ? "bg-[var(--bg-elevated)] border-[var(--border)] text-[var(--text-body)]"
+                                        : "bg-transparent border-[var(--border-mid)] text-[var(--text-body)] hover:bg-[var(--bg-elevated)]"
+                                    }`}
+                            >
+                                <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] flex-shrink-0" />
+                                <span className="overflow-hidden text-ellipsis whitespace-nowrap flex-1 max-w-[150px]">
+                                    {selectedFile || "No file"}
                                 </span>
-                                {files.find(f => f.name === selectedFile)?.status === 'indexing' && (
-                                    <Clock size={9} style={{ color: '#8a7040', flexShrink: 0 }} />
+                                {files.find((f) => f.name === selectedFile)?.status === "indexing" && (
+                                    <Clock size={9} className="text-[var(--accent)]/60 flex-shrink-0" />
                                 )}
-                                <ChevronDown size={10} style={{ color: '#58586a', flexShrink: 0, transform: showDropdown ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }} />
+                                <ChevronDown size={10} className={`text-[var(--text-muted)] flex-shrink-0 transition-transform ${showDropdown ? "rotate-180" : ""}`} />
                             </button>
 
                             {showDropdown && (
-                                <div style={{
-                                    position: 'absolute', right: 0, top: 'calc(100% + 7px)',
-                                    width: 270, background: '#0d0d10',
-                                    border: '1px solid #1e1e26', borderRadius: 8,
-                                    boxShadow: '0 20px 60px rgba(0,0,0,0.75)', zIndex: 2,
-                                    overflow: 'hidden', animation: 'fadeIn 0.14s ease',
-                                }}>
-                                    {files.length === 0
-                                        ? <p style={{ color: '#48485a', fontSize: 12, padding: '12px 16px' }}>No files indexed yet</p>
-                                        : files.map(f => (
+                                <div className="absolute right-0 top-[calc(100%+8px)] w-72 bg-[var(--bg-panel)] border border-[var(--border-mid)] rounded-xl shadow-2xl z-[2] overflow-hidden animate-[fadeIn_0.14s_ease]">
+                                    {files.length === 0 ? (
+                                        <p className="text-[var(--text-faint)] text-xs px-4 py-3.5 font-mono">No files indexed yet</p>
+                                    ) : (
+                                        files.map((f) => (
                                             <FileOption
-                                                key={f.name}
-                                                name={f.name}
-                                                status={f.status}
+                                                key={f.name} name={f.name} status={f.status}
                                                 selected={selectedFile === f.name}
                                                 onSelect={() => { setSelectedFile(f.name); setShowDropdown(false); }}
-                                                onDelete={handleDeleteFile} // Pass the new function here
+                                                onDelete={handleDeleteFile}
                                             />
                                         ))
-                                    }
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -808,83 +726,62 @@ const Chatbot = () => {
                 </div>
 
                 {/* ── Main split area ── */}
-                <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+                <div className="flex-1 flex overflow-hidden relative z-[1]">
 
                     {/* ── Chat pane ── */}
-                    <div style={{
-                        display: 'flex', flexDirection: 'column',
-                        flex: panelOpen ? '0 0 50%' : '1',
-                        minWidth: 0, overflow: 'hidden',
-                        transition: 'flex 0.3s cubic-bezier(0.4,0,0.2,1)',
-                        borderRight: panelOpen ? '1px solid #181820' : 'none',
-                    }}>
-                        {/* Empty / welcome state */}
+                    <div className={`flex flex-col overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${panelOpen ? "flex-[0_0_50%] border-r border-[var(--border)]" : "flex-1"}`}>
+
+                        {/* Welcome state */}
                         {(isEmpty || hasFileButEmpty) && (
-                            <div style={{
-                                flex: 1, display: 'flex', flexDirection: 'column',
-                                alignItems: 'center', justifyContent: 'center',
-                                gap: 20, padding: '0 24px', animation: 'fadeSlideUp 0.35s ease',
-                            }}>
-                                <div style={{ fontSize: 30, color: '#252530', lineHeight: 1 }}>∴</div>
-                                <div style={{ textAlign: 'center' }}>
-                                    <p style={{ fontSize: 15, fontWeight: 300, color: '#58586a', fontFamily: "'Fraunces', serif", fontStyle: 'italic' }}>
-                                        {isEmpty ? 'No documents loaded' : `Query · ${selectedFile}`}
+                            <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 animate-[fadeSlideUp_0.35s_ease]">
+                                <div className="w-16 h-16 rounded-[18px] bg-[var(--accent-dim)] border border-[var(--accent)]/20 flex items-center justify-center">
+                                    <span className="text-[28px] text-[var(--accent)]">◈</span>
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-lg font-light text-[var(--text-muted)] m-0" style={{ fontFamily: "'Fraunces', serif", fontStyle: "italic" }}>
+                                        {isEmpty ? "No documents loaded" : `Query · ${selectedFile}`}
                                     </p>
-                                    <p style={{ fontSize: 11.5, color: '#38384a', marginTop: 6, letterSpacing: '0.03em' }}>
-                                        {isEmpty ? 'Upload a PDF or TXT to begin' : 'Type a question or select a prompt below'}
+                                    <p className="text-xs text-[var(--text-faint)] mt-2 tracking-wide font-mono">
+                                        {isEmpty ? "Upload a PDF or TXT to begin" : "Type a question or select a prompt below"}
                                     </p>
                                 </div>
                                 {isEmpty ? (
-                                    <button onClick={() => setShowUploadPanel(true)} style={{
-                                        display: 'flex', alignItems: 'center', gap: 8,
-                                        background: '#c8a96e', color: '#09090c', padding: '9px 20px',
-                                        borderRadius: 5, fontSize: 12, fontWeight: 600, border: 'none',
-                                        cursor: 'pointer', fontFamily: "'DM Mono', monospace", letterSpacing: '0.04em', transition: 'background 0.15s',
-                                    }}
-                                        onMouseEnter={e => e.currentTarget.style.background = '#d4b880'}
-                                        onMouseLeave={e => e.currentTarget.style.background = '#c8a96e'}>
-                                        <Upload size={13} />Upload a document
+                                    <button
+                                        onClick={() => setShowUploadPanel(true)}
+                                        className="flex items-center gap-2 bg-[var(--accent)] text-[#09090c] px-5 py-2.5 rounded-lg text-[12.5px] font-bold border-none cursor-pointer font-mono tracking-widest uppercase transition-all hover:bg-[var(--accent-hover)] shadow-[0_8px_32px_rgba(230,200,122,0.25)]"
+                                    >
+                                        <Upload size={14} />Upload a document
                                     </button>
                                 ) : (
-                                    <SuggestedQuestions file={selectedFile} onSelect={t => handleSend(t)} />
+                                    <SuggestedQuestions file={selectedFile} onSelect={(t) => handleSend(t)} />
                                 )}
                             </div>
                         )}
 
                         {/* Messages */}
                         {!isEmpty && !hasFileButEmpty && (
-                            <div ref={scrollContainerRef} onScroll={handleScroll} style={{
-                                flex: 1, overflowY: 'auto', padding: '28px 24px 20px',
-                                display: 'flex', flexDirection: 'column', position: 'relative',
-                            }}>
-                                <div style={{ maxWidth: 700, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+                            <div
+                                ref={scrollContainerRef}
+                                onScroll={handleScroll}
+                                className="flex-1 overflow-y-auto px-6 pt-7 pb-5 flex flex-col relative"
+                            >
+                                <div className="max-w-[720px] w-full mx-auto flex flex-col gap-6">
                                     {messages.map((msg, idx) => (
-                                        <div key={msg.id} className={msg.type === 'user' ? 'cb-msg-user' : 'cb-msg-bot'}
-                                            style={{
-                                                display: 'flex', justifyContent: msg.type === 'user' ? 'flex-end' : 'flex-start',
-                                                animationDelay: `${Math.min(idx * 0.03, 0.18)}s`, animationFillMode: 'both',
-                                            }}>
-                                            {msg.type === 'user' ? (
-                                                <div style={{
-                                                    maxWidth: '72%', background: '#17171e',
-                                                    border: '1px solid rgba(200,169,110,0.2)',
-                                                    color: '#e2e0db', padding: '11px 16px',
-                                                    borderRadius: '9px 9px 3px 9px',
-                                                    fontSize: 13, lineHeight: 1.65,
-                                                    fontFamily: "'DM Mono', monospace",
-                                                }}>
+                                        <div
+                                            key={msg.id}
+                                            className={`flex ${msg.type === "user" ? "justify-end cb-msg-user" : "justify-start cb-msg-bot"}`}
+                                            style={{ animationDelay: `${Math.min(idx * 0.03, 0.18)}s`, animationFillMode: "both" }}
+                                        >
+                                            {msg.type === "user" ? (
+                                                <div className="max-w-[72%] bg-[var(--user-bubble)] border border-[var(--accent)]/20 text-[var(--text-primary)] px-4 py-3 rounded-[10px_10px_3px_10px] text-[13.5px] leading-7 font-mono shadow-md">
                                                     {msg.content}
                                                 </div>
                                             ) : (
-                                                <div style={{ display: 'flex', gap: 12, maxWidth: '100%', alignItems: 'flex-start', width: '100%' }}>
-                                                    <div style={{
-                                                        width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-                                                        background: '#17171e', border: '1px solid rgba(200,169,110,0.2)',
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2,
-                                                    }}>
-                                                        <span style={{ color: '#c8a96e', fontSize: 13 }}>◈</span>
+                                                <div className="flex gap-3 max-w-full items-start w-full">
+                                                    <div className="w-8 h-8 rounded-lg flex-shrink-0 bg-[var(--accent-dim)] border border-[var(--accent)]/25 flex items-center justify-center mt-0.5">
+                                                        <span className="text-[var(--accent)] text-sm">◈</span>
                                                     </div>
-                                                    <div style={{ flex: 1, minWidth: 0, overflowX: 'hidden', paddingTop: 3 }}>
+                                                    <div className="flex-1 min-w-0 overflow-x-hidden pt-1">
                                                         {msg.thinking && <ThinkBlock thinking={msg.thinking} done={msg.thinkDone} />}
                                                         {msg.content
                                                             ? <MarkdownMessage content={msg.content} />
@@ -894,45 +791,32 @@ const Chatbot = () => {
                                             )}
                                         </div>
                                     ))}
-                                    <div ref={messagesEndRef} style={{ height: 1 }} />
+                                    <div ref={messagesEndRef} className="h-px" />
                                 </div>
 
                                 {showScrollBtn && (
-                                    <button onClick={() => { setUserScrolled(false); scrollToBottom('smooth'); }} style={{
-                                        position: 'sticky', bottom: 8, left: '50%', transform: 'translateX(-50%)',
-                                        display: 'flex', alignItems: 'center', gap: 5,
-                                        background: '#13131a', border: '1px solid #1e1e28',
-                                        color: '#8a8a9a', padding: '6px 14px', borderRadius: 5,
-                                        fontSize: 11.5, cursor: 'pointer', fontFamily: "'DM Mono', monospace",
-                                        boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
-                                        animation: 'scrollBtnIn 0.2s cubic-bezier(0.34,1.56,0.64,1)',
-                                        whiteSpace: 'nowrap', width: 'fit-content',
-                                        marginLeft: 'auto', marginRight: 'auto',
-                                    }}>
-                                        <ArrowDown size={11} />Scroll to bottom
+                                    <button
+                                        onClick={() => { setUserScrolled(false); scrollToBottom("smooth"); }}
+                                        className="sticky bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[var(--bg-elevated)] border border-[var(--border-mid)] text-[var(--text-muted)] px-4 py-1.5 rounded-md text-[11.5px] cursor-pointer font-mono shadow-xl animate-[scrollBtnIn_0.2s_cubic-bezier(0.34,1.56,0.64,1)] whitespace-nowrap w-fit mx-auto"
+                                    >
+                                        <ArrowDown size={12} />Scroll to bottom
                                     </button>
                                 )}
                             </div>
                         )}
 
                         {/* ── Input Bar ── */}
-                        <div style={{
-                            borderTop: '1px solid #181820', padding: '10px 16px 14px',
-                            flexShrink: 0, background: '#0d0d10',
-                        }}>
+                        <div className="border-t border-[var(--border)] px-4 pt-3 pb-4 flex-shrink-0 backdrop-blur-xl" style={{ backgroundColor: "var(--bg-panel)" }}>
                             {selectedFile && (
-                                <div style={{ maxWidth: 700, margin: '0 auto 8px' }}>
-                                    <span onClick={() => setShowUploadPanel(true)} style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                                        background: 'rgba(200,169,110,0.06)', border: '1px solid rgba(200,169,110,0.16)',
-                                        color: '#c8a96e', fontSize: 10.5, padding: '3px 10px', borderRadius: 5,
-                                        cursor: 'pointer', fontFamily: "'DM Mono', monospace", letterSpacing: '0.04em',
-                                        transition: 'all 0.15s',
-                                    }}>
-                                        <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#c8a96e' }} />
+                                <div className="max-w-[720px] mx-auto mb-2.5">
+                                    <span
+                                        onClick={() => setShowUploadPanel(true)}
+                                        className="inline-flex items-center gap-1.5 bg-[var(--accent-dim)] border border-[var(--accent)]/20 text-[var(--accent)] text-[11px] px-3 py-1 rounded-md cursor-pointer font-mono tracking-wide transition-all hover:bg-[var(--accent)]/15"
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
                                         {selectedFile}
-                                        {files.find(f => f.name === selectedFile)?.status === 'indexing' && (
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: '#8a7040' }}>
+                                        {files.find((f) => f.name === selectedFile)?.status === "indexing" && (
+                                            <span className="flex items-center gap-1 text-[var(--accent)]/60">
                                                 <Clock size={8} />indexing…
                                             </span>
                                         )}
@@ -940,110 +824,75 @@ const Chatbot = () => {
                                 </div>
                             )}
 
-                            <div style={{ maxWidth: 700, margin: '0 auto' }}>
-                                <div className="cb-input-area" style={{
-                                    display: 'flex', alignItems: 'flex-end', gap: 8,
-                                    background: '#111118', border: '1px solid #1e1e28',
-                                    borderRadius: 9, padding: '8px 8px 8px 13px',
-                                    transition: 'border-color 0.2s, box-shadow 0.2s',
-                                }}>
-                                    <button onClick={() => setShowUploadPanel(true)} disabled={uploading} style={{
-                                        padding: 7, borderRadius: 5, background: 'transparent', border: 'none',
-                                        cursor: uploading ? 'wait' : 'pointer', color: '#48485a', flexShrink: 0,
-                                        opacity: uploading ? 0.5 : 1, display: 'flex', transition: 'color 0.15s', marginBottom: 1,
-                                    }}
-                                        onMouseEnter={e => { if (!uploading) e.currentTarget.style.color = '#c8a96e'; }}
-                                        onMouseLeave={e => e.currentTarget.style.color = '#48485a'}>
-                                        {uploading ? <Loader2 size={15} style={{ color: '#c8a96e', animation: 'spin 1s linear infinite' }} /> : <Paperclip size={15} />}
+                            <div className="max-w-[720px] mx-auto">
+                                <div className={`
+                                    flex items-end gap-2 bg-[var(--bg-input)] border border-[var(--border-mid)] rounded-xl px-3.5 py-2.5
+                                    transition-all focus-within:border-[var(--accent)]/45 focus-within:shadow-[0_0_0_3px_var(--accent-dim)]
+                                `}>
+                                    <button
+                                        onClick={() => setShowUploadPanel(true)}
+                                        disabled={uploading}
+                                        className={`p-1.5 rounded-md bg-transparent border-none flex-shrink-0 flex transition-colors mb-0.5 ${uploading ? "opacity-50 cursor-wait" : "cursor-pointer text-[var(--text-faint)] hover:text-[var(--accent)]"}`}
+                                    >
+                                        {uploading
+                                            ? <Loader2 size={15} className="text-[var(--accent)] animate-spin" />
+                                            : <Paperclip size={15} />}
                                     </button>
 
-                                    <textarea ref={textareaRef} value={inputValue}
-                                        onChange={e => setInputValue(e.target.value)} onKeyDown={handleKeyDown}
-                                        placeholder={!selectedFile ? 'Upload a file to start…' : `Ask about ${selectedFile}…`}
-                                        rows={1} style={{
-                                            flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                                            resize: 'none', color: '#e2e0db', fontSize: 13, lineHeight: 1.6,
-                                            fontFamily: "'DM Mono', monospace", padding: '5px 0',
-                                            maxHeight: 160, overflowY: 'auto',
-                                        }} />
+                                    <textarea
+                                        ref={textareaRef}
+                                        value={inputValue}
+                                        onChange={(e) => setInputValue(e.target.value)}
+                                        onKeyDown={handleKeyDown}
+                                        placeholder={!selectedFile ? "Upload a file to start…" : `Ask about ${selectedFile}…`}
+                                        rows={1}
+                                        className="flex-1 bg-transparent border-none outline-none resize-none text-[var(--text-primary)] text-[13.5px] leading-[1.65] font-mono py-1 overflow-y-auto"
+                                        style={{ maxHeight: 160, caretColor: "var(--accent)" }}
+                                    />
 
-                                    <button className="cb-send-btn" onClick={() => handleSend()}
-                                        disabled={!inputValue.trim() || !selectedFile || uploading} style={{
-                                            width: 33, height: 33, borderRadius: 7, flexShrink: 0,
-                                            background: inputValue.trim() && selectedFile && !uploading ? '#c8a96e' : '#17171e',
-                                            border: `1px solid ${inputValue.trim() && selectedFile && !uploading ? '#c8a96e' : '#1e1e28'}`,
-                                            cursor: inputValue.trim() && selectedFile && !uploading ? 'pointer' : 'not-allowed',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            color: inputValue.trim() && selectedFile && !uploading ? '#09090c' : '#2e2e3e',
-                                            transition: 'all 0.15s', marginBottom: 1,
-                                        }}>
-                                        <Send size={13} />
+                                    <button
+                                        onClick={() => handleSend()}
+                                        disabled={!inputValue.trim() || !selectedFile || uploading}
+                                        className={`w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center border transition-all mb-0.5 ${inputValue.trim() && selectedFile && !uploading
+                                            ? "bg-[var(--accent)] border-[var(--accent)] text-[#09090c] cursor-pointer hover:bg-[var(--accent-hover)] shadow-[0_4px_16px_var(--accent-dim)] active:scale-90"
+                                            : "bg-[var(--bg-elevated)] border-[var(--border-mid)] text-[var(--text-faint)] cursor-not-allowed"
+                                            }`}
+                                    >
+                                        <Send size={14} />
                                     </button>
                                 </div>
 
-                                <p style={{ fontSize: 10.5, color: '#252535', textAlign: 'center', marginTop: 7, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                                <p className="text-[10.5px] text-[var(--text-faint)] text-center mt-2 tracking-widest uppercase font-mono opacity-40">
                                     Answers grounded in selected document only
                                 </p>
                             </div>
                         </div>
                     </div>
 
-                    {/* ── Right Panel (PDF or Report) ── */}
+                    {/* ── Right Panel (PDF viewer) ── */}
                     {panelOpen && (
-                        <div style={{
-                            flex: '0 0 50%', minWidth: 0, overflow: 'hidden',
-                            display: 'flex', flexDirection: 'column',
-                            animation: 'fadeIn 0.2s ease',
-                            background: '#09090c',
-                        }}>
-                            {/* Panel sub-tabs */}
-                            <div style={{
-                                display: 'flex', alignItems: 'center', gap: 4,
-                                padding: '0 12px', height: 48, flexShrink: 0,
-                                borderBottom: '1px solid #181820', background: '#0d0d10',
-                            }}>
-                                <button onClick={() => setActivePanel('pdf')} style={{
-                                    display: 'flex', alignItems: 'center', gap: 5,
-                                    padding: '5px 12px', borderRadius: 5, fontSize: 11.5,
-                                    cursor: 'pointer', fontFamily: "'DM Mono', monospace",
-                                    background: activePanel === 'pdf' ? 'rgba(200,169,110,0.1)' : 'transparent',
-                                    border: `1px solid ${activePanel === 'pdf' ? 'rgba(200,169,110,0.28)' : 'transparent'}`,
-                                    color: activePanel === 'pdf' ? '#c8a96e' : '#58586a',
-                                    transition: 'all 0.15s',
-                                }}>
+                        <div className="flex-[0_0_50%] min-w-0 overflow-hidden flex flex-col animate-[fadeIn_0.2s_ease] bg-[var(--bg-base)]">
+                            <div className="flex items-center gap-1 px-3.5 h-12 flex-shrink-0 border-b border-[var(--border)] bg-[var(--bg-panel)]">
+                                <button
+                                    onClick={() => setActivePanel("pdf")}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11.5px] cursor-pointer font-mono transition-all ${activePanel === "pdf"
+                                        ? "bg-[var(--accent-dim)] border border-[var(--accent)]/35 text-[var(--accent)]"
+                                        : "bg-transparent border border-transparent text-[var(--text-muted)]"
+                                        }`}
+                                >
                                     <FileSearch size={11} />PDF Viewer
                                 </button>
-                                <button onClick={() => setActivePanel('report')} style={{
-                                    display: 'flex', alignItems: 'center', gap: 5,
-                                    padding: '5px 12px', borderRadius: 5, fontSize: 11.5,
-                                    cursor: 'pointer', fontFamily: "'DM Mono', monospace",
-                                    background: activePanel === 'report' ? 'rgba(200,169,110,0.1)' : 'transparent',
-                                    border: `1px solid ${activePanel === 'report' ? 'rgba(200,169,110,0.28)' : 'transparent'}`,
-                                    color: activePanel === 'report' ? '#c8a96e' : '#58586a',
-                                    transition: 'all 0.15s',
-                                }}>
-                                    <FileText size={11} />Report
-                                </button>
-                                <div style={{ flex: 1 }} />
-                                <button onClick={() => setActivePanel(null)} style={{
-                                    padding: 6, borderRadius: 5, background: 'transparent',
-                                    border: '1px solid #1a1a24', cursor: 'pointer', color: '#48485a',
-                                    display: 'flex', transition: 'all 0.15s',
-                                }}
-                                    onMouseEnter={e => { e.currentTarget.style.color = '#e2e0db'; e.currentTarget.style.borderColor = '#3a3a4a'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.color = '#48485a'; e.currentTarget.style.borderColor = '#1a1a24'; }}>
+                                <div className="flex-1" />
+                                <button
+                                    onClick={() => setActivePanel(null)}
+                                    className="p-1.5 rounded bg-transparent border border-[var(--border)] cursor-pointer text-[var(--text-faint)] flex hover:text-[var(--text-body)] hover:border-[var(--border-mid)] transition-all"
+                                >
                                     <X size={12} />
                                 </button>
                             </div>
-
-                            <div style={{ flex: 1, overflow: 'hidden' }}>
-                                {activePanel === 'pdf' && (
-                                    <PdfViewerPanel filename={selectedFile} apiBase={API} onClose={() => setActivePanel(null)} />
-                                )}
-                                {activePanel === 'report' && (
-                                    <div style={{ height: '100%', overflowY: 'auto' }}>
-                                        <ReportPanel filename={selectedFile} apiBase={API} />
-                                    </div>
+                            <div className="flex-1 overflow-hidden">
+                                {activePanel === "pdf" && (
+                                    <PdfViewerPanel filename={selectedFile} onClose={() => setActivePanel(null)} />
                                 )}
                             </div>
                         </div>

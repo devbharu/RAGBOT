@@ -1,21 +1,19 @@
-import { useState } from 'react'
-import Chatbot from './components/Chatbot'
-import Header from './components/Header'
+
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AppProvider } from "./context/AppContext";
+import Chatbot from "./components/Chatbot";
+import ReportPanel from "./components/ReportPanel";
 
 
-
-function App() {
-  const [count, setCount] = useState(0)
-
+export default function App() {
   return (
-    <>
-      <div className='bg-blue-200'>
-        {/* <Header /> */}
-        <Chatbot />
-
-      </div>
-    </>
-  )
+    <AppProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Chatbot />} />
+          <Route path="/report" element={<ReportPanel />} />
+        </Routes>
+      </BrowserRouter>
+    </AppProvider>
+  );
 }
-
-export default App
