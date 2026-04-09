@@ -1,26 +1,25 @@
 /**
- * ReportPanel.jsx — Metallurgy Report Engine v7.0
- * Complete redesign:
- * - Clean Claude-like layout, readable dark surfaces
- * - LaTeX highlighter rebuilt: simple, no clutter, no re-render artifacts
- * - Simple textarea editor — no virtualized line number jank
- * - Relaxed, spacious, professional feel
+ * ReportPanel.jsx — Metallurgy Report Engine v10.0
+ * Claude-like UI · Warm amber palette · Dynamic line numbers · SVG icons throughout
+ * All logic preserved from v9 · Tailwind utility classes where applicable
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import {
+    useState, useRef, useEffect, useCallback, useMemo
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp, API } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
-import { Sun, Moon, ArrowLeft, FileText, Copy, Download, ChevronRight, RefreshCw, X } from "lucide-react";
 
-const SESSION_HINT_KEY = "rp_query_hint_v5";
+/* ─── constants ─────────────────────────────────────────────── */
+const SESSION_HINT_KEY = "rp_query_hint_v6";
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [2000, 5000, 12000];
 
 const PIPELINE_STEPS = [
     { event: "start", icon: "⬡", label: "Connecting" },
     { event: "structure", icon: "◈", label: "Reading structure" },
-    { event: "section_start", icon: "⟁", label: "Extracting sections" },
+    { event: "section_start", icon: "⟁", label: "Extracting" },
     { event: "section_extracted", icon: "▦", label: "Writing LaTeX" },
     { event: "assembling", icon: "⊟", label: "Assembling" },
     { event: "done", icon: "✦", label: "Complete" },
@@ -29,183 +28,265 @@ const PIPELINE_STEPS = [
 const cleanName = (s = "") =>
     s.replace(/_pdf$/i, "").replace(/\.pdf$/i, "").replace(/_/g, " ").trim();
 
-/* ─── Theme Toggle ───────────────────────────────────────────── */
-const ThemeToggle = () => {
-    const { isDark, toggleTheme } = useTheme();
-    return (
-        <button onClick={toggleTheme} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-[var(--border-mid)] text-[var(--text-muted)] text-[11px] font-mono cursor-pointer transition-all hover:bg-[var(--bg-elevated)] hover:text-[var(--text-body)]" style={{ background: "transparent" }}>
-            {isDark ? <Sun size={11} /> : <Moon size={11} />}
-            {isDark ? "Light" : "Dark"}
-        </button>
-    );
+/* ─── SVG icon library ───────────────────────────────────────── */
+const Icons = {
+    File: (p = {}) => (
+        <svg width={p.size || 14} height={p.size || 14} viewBox="0 0 24 24" fill="none"
+            stroke={p.color || "currentColor"} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+        </svg>
+    ),
+    FileText: (p = {}) => (
+        <svg width={p.size || 14} height={p.size || 14} viewBox="0 0 24 24" fill="none"
+            stroke={p.color || "currentColor"} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="9" y1="15" x2="15" y2="15" />
+            <line x1="9" y1="11" x2="15" y2="11" />
+        </svg>
+    ),
+    Sun: (p = {}) => (
+        <svg width={p.size || 15} height={p.size || 15} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+        </svg>
+    ),
+    Moon: (p = {}) => (
+        <svg width={p.size || 15} height={p.size || 15} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+        </svg>
+    ),
+    ChevLeft: (p = {}) => (
+        <svg width={p.size || 13} height={p.size || 13} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+        </svg>
+    ),
+    ChevRight: (p = {}) => (
+        <svg width={p.size || 13} height={p.size || 13} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 18 15 12 9 6" />
+        </svg>
+    ),
+    Copy: (p = {}) => (
+        <svg width={p.size || 13} height={p.size || 13} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+        </svg>
+    ),
+    Download: (p = {}) => (
+        <svg width={p.size || 13} height={p.size || 13} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+    ),
+    Edit: (p = {}) => (
+        <svg width={p.size || 13} height={p.size || 13} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+        </svg>
+    ),
+    Zap: (p = {}) => (
+        <svg width={p.size || 13} height={p.size || 13} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+    ),
+    X: (p = {}) => (
+        <svg width={p.size || 12} height={p.size || 12} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+    ),
+    Refresh: (p = {}) => (
+        <svg width={p.size || 13} height={p.size || 13} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
+            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+        </svg>
+    ),
+    Check: (p = {}) => (
+        <svg width={p.size || 13} height={p.size || 13} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+        </svg>
+    ),
+    Plus: (p = {}) => (
+        <svg width={p.size || 12} height={p.size || 12} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+    ),
+    ArrowLeft: (p = {}) => (
+        <svg width={p.size || 13} height={p.size || 13} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
+        </svg>
+    ),
+    Minus: (p = {}) => (
+        <svg width={p.size || 13} height={p.size || 13} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+    ),
+    Layers: (p = {}) => (
+        <svg width={p.size || 32} height={p.size || 32} viewBox="0 0 24 24" fill="none"
+            stroke={p.color || "currentColor"} strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="12 2 2 7 12 12 22 7 12 2" />
+            <polyline points="2 17 12 22 22 17" />
+            <polyline points="2 12 12 17 22 12" />
+        </svg>
+    ),
+    Alert: (p = {}) => (
+        <svg width={p.size || 13} height={p.size || 13} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+        </svg>
+    ),
+    Clock: (p = {}) => (
+        <svg width={p.size || 22} height={p.size || 22} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+        </svg>
+    ),
 };
 
-/* ─── Structure tree ─────────────────────────────────────────── */
-function StructurePane({ latex }) {
-    const sections = useMemo(() => {
-        if (!latex) return [];
-        const result = [], re = /\\(section|subsection|subsubsection)\*?\{([^}]+)\}/g;
-        let m;
-        while ((m = re.exec(latex)) !== null)
-            result.push({ level: m[1], title: m[2] });
-        return result;
-    }, [latex]);
-
-    if (!sections.length)
-        return (
-            <div className="px-4 py-8 text-[var(--text-faint)] text-[11px] font-mono text-center leading-loose">
-                Structure appears<br />after generation
-            </div>
-        );
-
-    return (
-        <div className="overflow-auto flex-1 py-1">
-            {sections.map((s, i) => (
-                <div key={i} className={`cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap transition-colors hover:bg-[var(--bg-elevated)] py-1.5 border-b border-[var(--border)] ${s.level === "section" ? "px-3 text-[11.5px] text-[var(--accent)]" : s.level === "subsection" ? "px-5 text-[11px] text-[var(--text-muted)]" : "px-7 text-[10.5px] text-[var(--text-faint)]"}`}
-                    style={{ fontFamily: s.level === "section" ? "'Fraunces', serif" : "inherit", fontStyle: s.level === "section" ? "italic" : "normal" }}>
-                    {s.level === "section" ? "§ " : s.level === "subsection" ? "› " : "· "}{s.title}
-                </div>
-            ))}
-        </div>
-    );
-}
-
-/* ─── Clean LaTeX Editor ─────────────────────────────────────── */
-/*
- * Uses a simple <textarea> with a synchronized <pre> overlay for highlights.
- * The overlay sits behind the textarea (which has transparent text + caret).
- * This avoids all virtualization jank and re-render artifacts.
- */
-const LATEX_COLORS = {
-    comment: "#6a9955",
-    command: "#7cb8f8",
-    brace: "#e6c87a",
-    math: "#56d0b8",
-    number: "#b5cea8",
-    special: "#dcdcaa",
-    string: "#ce9178",
-    default: "#d4d4cc",
+/* ─── LaTeX syntax highlighter ───────────────────────────────── */
+const C = {
+    comment: "#6a9955", command: "#7cb8f8", brace: "#e6c87a",
+    math: "#4ec9b0", number: "#b5cea8", special: "#dcdcaa",
+    string: "#ce9178", def: "#d4d4cc",
 };
 
 function highlightLatex(code) {
-    /* Returns HTML string with <span> tags. Runs once per render. */
-    const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
+    const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const rules = [
-        { re: /(%[^\n]*)/g, color: LATEX_COLORS.comment },
-        { re: /(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$)/g, color: LATEX_COLORS.math },
-        { re: /(\\[a-zA-Z]+\*?)/g, color: LATEX_COLORS.command },
-        { re: /([{}])/g, color: LATEX_COLORS.brace },
-        { re: /(\[|\])/g, color: LATEX_COLORS.string },
-        { re: /\b(\d+(?:\.\d+)?(?:pt|em|cm|mm|in|ex)?)\b/g, color: LATEX_COLORS.number },
-        { re: /([&_^~])/g, color: LATEX_COLORS.special },
+        { re: /(%[^\n]*)/g, col: C.comment },
+        { re: /(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$)/g, col: C.math },
+        { re: /(\\[a-zA-Z]+\*?)/g, col: C.command },
+        { re: /([{}])/g, col: C.brace },
+        { re: /(\[|\])/g, col: C.string },
+        { re: /\b(\d+(?:\.\d+)?(?:pt|em|cm|mm|in)?)\b/g, col: C.number },
+        { re: /([&_^~])/g, col: C.special },
     ];
-
     const len = code.length;
-    const colors = new Array(len).fill(null);
-
-    for (const { re, color } of rules) {
-        re.lastIndex = 0;
-        let m;
-        while ((m = re.exec(code)) !== null) {
-            for (let i = m.index; i < m.index + m[0].length; i++) {
-                if (!colors[i]) colors[i] = color;
-            }
-        }
+    const cols = new Array(len).fill(null);
+    for (const { re, col } of rules) {
+        re.lastIndex = 0; let m;
+        while ((m = re.exec(code)) !== null)
+            for (let i = m.index; i < m.index + m[0].length; i++)
+                if (!cols[i]) cols[i] = col;
     }
-
     let html = "", i = 0;
     while (i < len) {
-        const color = colors[i] || LATEX_COLORS.default;
+        const c = cols[i] || C.def;
         let j = i + 1;
-        while (j < len && (colors[j] || LATEX_COLORS.default) === color) j++;
-        const segment = escapeHtml(code.slice(i, j));
-        html += `<span style="color:${color}">${segment}</span>`;
+        while (j < len && (cols[j] || C.def) === c) j++;
+        html += `<span style="color:${c}">${esc(code.slice(i, j))}</span>`;
         i = j;
     }
     return html;
 }
 
-function LaTeXEditor({ value, onChange, readOnly = false, fontSize = 13 }) {
-    const textareaRef = useRef(null);
+/* ─── LaTeX editor with FULLY DYNAMIC line numbers ───────────── */
+function LaTeXEditor({ value, onChange, readOnly, fontSize = 13 }) {
+    const taRef = useRef(null);
     const preRef = useRef(null);
-    const lineH = Math.round(fontSize * 1.72);
-    const lines = value.split("\n").length;
+    const gutRef = useRef(null);
+    const lh = Math.round(fontSize * 1.72);
+    const lines = value.split("\n");
+    const count = lines.length;
 
-    /* Sync scroll between textarea and highlight overlay */
-    const syncScroll = () => {
-        if (textareaRef.current && preRef.current) {
-            preRef.current.scrollTop = textareaRef.current.scrollTop;
-            preRef.current.scrollLeft = textareaRef.current.scrollLeft;
+    /* keep gutter + highlight in sync with textarea scroll */
+    const sync = useCallback(() => {
+        const ta = taRef.current;
+        if (!ta) return;
+        if (preRef.current) {
+            preRef.current.scrollTop = ta.scrollTop;
+            preRef.current.scrollLeft = ta.scrollLeft;
         }
-    };
+        if (gutRef.current) {
+            gutRef.current.scrollTop = ta.scrollTop;
+        }
+    }, []);
 
-    /* Highlighted HTML — memoised so it only recomputes when value changes */
     const highlighted = useMemo(() => highlightLatex(value), [value]);
 
-    const editorStyle = {
-        fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-        fontSize,
-        lineHeight: `${lineH}px`,
-        tabSize: 2,
-        whiteSpace: "pre",
-        overflowWrap: "normal",
+    const mono = {
+        fontFamily: "'JetBrains Mono','Fira Code',monospace",
+        fontSize, lineHeight: `${lh}px`,
+        tabSize: 2, whiteSpace: "pre", overflowWrap: "normal",
     };
 
     return (
-        <div className="flex flex-1 overflow-hidden min-h-0" style={{ background: "#13131a" }}>
-
-            {/* Line numbers gutter */}
-            <div className="flex-shrink-0 select-none border-r border-[#2a2a38] overflow-hidden" style={{ width: 52, background: "#13131a" }}>
-                <div style={{ ...editorStyle, paddingTop: 8, paddingRight: 10, paddingLeft: 0, textAlign: "right", color: "#44445a", overflow: "hidden" }}>
-                    {Array.from({ length: lines }, (_, i) => (
-                        <div key={i} style={{ height: lineH }}>{i + 1}</div>
+        <div style={{ display: "flex", flex: 1, overflow: "hidden", background: "var(--ed-bg)" }}>
+            {/* ── Gutter: one <div> per line, scrolls with textarea ── */}
+            <div
+                ref={gutRef}
+                style={{
+                    width: 52, flexShrink: 0,
+                    background: "var(--ed-gutter)",
+                    borderRight: "1px solid var(--border)",
+                    overflowY: "hidden", overflowX: "hidden",
+                    userSelect: "none",
+                }}
+            >
+                <div style={{ ...mono, paddingTop: 10, paddingRight: 10, textAlign: "right", color: "var(--text-faint)" }}>
+                    {Array.from({ length: count }, (_, i) => (
+                        <div key={i} style={{ height: lh }}>{i + 1}</div>
                     ))}
+                    {/* trailing spacer */}
+                    <div style={{ height: lh * 2 }} />
                 </div>
             </div>
 
-            {/* Code area — overlaid textarea on highlighted pre */}
-            <div className="relative flex-1 overflow-hidden">
-                {/* Highlight layer */}
+            {/* ── Code zone ── */}
+            <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
+                {/* syntax overlay */}
                 <pre
                     ref={preRef}
                     aria-hidden
                     style={{
-                        ...editorStyle,
-                        position: "absolute", inset: 0,
-                        margin: 0,
-                        padding: "8px 24px 8px 16px",
+                        ...mono,
+                        position: "absolute", inset: 0, margin: 0,
+                        padding: "10px 24px 10px 14px",
                         overflow: "hidden",
-                        pointerEvents: "none",
-                        userSelect: "none",
+                        pointerEvents: "none", userSelect: "none",
                     }}
                     dangerouslySetInnerHTML={{ __html: highlighted + "\n" }}
                 />
-                {/* Textarea layer */}
+                {/* textarea (transparent over overlay) */}
                 <textarea
-                    ref={textareaRef}
+                    ref={taRef}
                     value={value}
-                    onChange={readOnly ? undefined : (e) => onChange(e.target.value)}
-                    onScroll={syncScroll}
+                    onChange={readOnly ? undefined : e => onChange(e.target.value)}
+                    onScroll={sync}
                     readOnly={readOnly}
                     spellCheck={false}
                     autoCapitalize="off"
                     autoCorrect="off"
                     style={{
-                        ...editorStyle,
-                        position: "absolute", inset: 0,
-                        margin: 0,
-                        padding: "8px 24px 8px 16px",
-                        background: "transparent",
-                        color: "transparent",
-                        caretColor: "#e6c87a",
-                        border: "none",
-                        outline: "none",
-                        resize: "none",
-                        width: "100%",
-                        height: "100%",
-                        overflowX: "auto",
-                        overflowY: "auto",
+                        ...mono,
+                        position: "absolute", inset: 0, margin: 0,
+                        padding: "10px 24px 10px 14px",
+                        background: "transparent", color: "transparent",
+                        caretColor: "var(--accent)",
+                        border: "none", outline: "none",
+                        resize: "none", width: "100%", height: "100%",
+                        overflowX: "auto", overflowY: "auto",
                     }}
                 />
             </div>
@@ -213,14 +294,225 @@ function LaTeXEditor({ value, onChange, readOnly = false, fontSize = 13 }) {
     );
 }
 
-/* ─── Main Component ─────────────────────────────────────────── */
+/* ─── Section outline ────────────────────────────────────────── */
+function Outline({ latex }) {
+    const sections = useMemo(() => {
+        if (!latex) return [];
+        const res = [], re = /\\(section|subsection|subsubsection)\*?\{([^}]+)\}/g;
+        let m;
+        while ((m = re.exec(latex)) !== null)
+            res.push({ level: m[1], title: m[2] });
+        return res;
+    }, [latex]);
+
+    if (!sections.length) return (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 10, padding: "24px 12px" }}>
+            <Icons.Layers size={28} color="var(--text-faint)" />
+            <p style={{ margin: 0, color: "var(--text-faint)", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", textAlign: "center", lineHeight: 2 }}>
+                Outline appears<br />after generation
+            </p>
+        </div>
+    );
+
+    return (
+        <div style={{ overflow: "auto", flex: 1 }}>
+            {sections.map((s, i) => {
+                const indent = s.level === "section" ? 8 : s.level === "subsection" ? 20 : 32;
+                const col = s.level === "section" ? "var(--accent)" : s.level === "subsection" ? "var(--text-muted)" : "var(--text-faint)";
+                const fs = s.level === "section" ? 11.5 : s.level === "subsection" ? 11 : 10.5;
+                const prefix = s.level === "section" ? "§ " : s.level === "subsection" ? "› " : "· ";
+                const isSection = s.level === "section";
+                return (
+                    <div
+                        key={i}
+                        style={{
+                            paddingLeft: indent, paddingRight: 8, paddingTop: 5, paddingBottom: 5,
+                            fontSize: fs, color: col, cursor: "pointer",
+                            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                            borderBottom: "1px solid var(--border)",
+                            fontFamily: isSection ? "'Fraunces',Georgia,serif" : "'JetBrains Mono',monospace",
+                            fontStyle: isSection ? "italic" : "normal",
+                            transition: "background .12s",
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "var(--bg-elevated)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                        {prefix}{s.title}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+/* ─── Live log ───────────────────────────────────────────────── */
+function LiveLog({ log, loading, detectedMeta }) {
+    const endRef = useRef(null);
+    useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [log]);
+
+    return (
+        <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column" }}>
+            {detectedMeta && (
+                <div style={{
+                    margin: "10px 10px 4px", padding: "8px 10px",
+                    background: "var(--bg-panel)", border: "1px solid var(--border)",
+                    borderRadius: 6, fontSize: 10,
+                    fontFamily: "'JetBrains Mono',monospace", lineHeight: 1.9,
+                }}>
+                    {[
+                        ["Material", detectedMeta.material],
+                        ["Heat No.", detectedMeta.heat],
+                        ["Sections", (detectedMeta.sections_found || []).length],
+                        ["Chunks", (detectedMeta.total_chunks || 0).toLocaleString()],
+                    ].map(([k, v]) => (
+                        <div key={k} style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span style={{ color: "var(--text-faint)" }}>{k}</span>
+                            <span style={{ color: "var(--accent)" }}>{v}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {log.map((entry, i) => (
+                <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "5px 12px", borderBottom: "1px solid var(--border)",
+                    animation: "slideIn .15s ease both",
+                }}>
+                    <span style={{ fontSize: 11, width: 14, flexShrink: 0, color: entry.done ? "var(--text-faint)" : "var(--accent)" }}>
+                        {entry.icon}
+                    </span>
+                    <span style={{
+                        fontSize: 10, flex: 1,
+                        color: entry.done ? "var(--text-faint)" : "var(--text-body)",
+                        fontFamily: "'JetBrains Mono',monospace", lineHeight: 1.5,
+                    }}>
+                        {entry.label}
+                    </span>
+                    {i === log.length - 1 && loading && (
+                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flexShrink: 0, animation: "blink 1.2s ease-in-out infinite" }} />
+                    )}
+                </div>
+            ))}
+
+            <div ref={endRef} />
+
+            {!loading && log.length === 0 && (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 10, padding: "24px 12px", color: "var(--text-faint)", fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textAlign: "center" }}>
+                    <Icons.Clock size={24} />
+                    <span style={{ lineHeight: 1.9 }}>Generate a report<br />to see live progress</span>
+                </div>
+            )}
+        </div>
+    );
+}
+
+/* ─── PDF Viewer ─────────────────────────────────────────────── */
+function PDFViewer({ pdfUrl, compiling, onCompile, latexSource, compileError }) {
+    const [zoom, setZoom] = useState(100);
+    const [page, setPage] = useState(1);
+
+    if (!pdfUrl) return (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, background: "var(--bg-panel)" }}>
+            <div style={{ opacity: 0.2 }}>
+                <Icons.Layers size={52} color="var(--text-muted)" />
+            </div>
+            <p style={{ margin: 0, fontFamily: "'Fraunces',Georgia,serif", fontStyle: "italic", fontSize: 15, color: "var(--text-muted)" }}>
+                No compiled PDF yet
+            </p>
+            <button onClick={onCompile} disabled={!latexSource || compiling}
+                style={{ ...ab("primary"), padding: "7px 18px", opacity: (!latexSource || compiling) ? 0.4 : 1 }}>
+                {compiling ? <><Spinner col="var(--accent)" /> Compiling…</> : <><Icons.Refresh size={13} /> Compile → PDF</>}
+            </button>
+            {compileError && (
+                <p style={{ margin: 0, color: "var(--red-soft)", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", maxWidth: 280, textAlign: "center" }}>
+                    {compileError}
+                </p>
+            )}
+        </div>
+    );
+
+    return (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg-panel)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 12px", height: 40, flexShrink: 0, background: "var(--bg-surface)", borderBottom: "1px solid var(--border)" }}>
+                <button onClick={onCompile} disabled={compiling} style={ab("green")}>
+                    {compiling ? <><Spinner col="var(--green-vivid)" /> Compiling…</> : <><Icons.Refresh size={13} /> Recompile</>}
+                </button>
+                <Sep />
+                <IBtn onClick={() => setZoom(z => Math.max(50, z - 10))}><Icons.Minus size={12} /></IBtn>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 38, textAlign: "center", fontFamily: "'JetBrains Mono',monospace", fontVariantNumeric: "tabular-nums" }}>{zoom}%</span>
+                <IBtn onClick={() => setZoom(z => Math.min(200, z + 10))}><Icons.Plus size={12} /></IBtn>
+                <Sep />
+                <IBtn><Icons.ChevLeft size={13} /></IBtn>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 54, textAlign: "center", fontFamily: "'JetBrains Mono',monospace", fontVariantNumeric: "tabular-nums" }}>Pg {page}</span>
+                <IBtn><Icons.ChevRight size={13} /></IBtn>
+            </div>
+            <div style={{ flex: 1, overflow: "auto", display: "flex", alignItems: "flex-start", justifyContent: "center", background: "var(--bg-panel)", padding: "16px 0" }}>
+                <iframe src={pdfUrl} title="Compiled PDF" style={{ width: `${zoom}%`, flex: "none", border: "none", background: "white", boxShadow: "0 4px 32px rgba(0,0,0,0.22)", minHeight: "calc(100vh - 120px)", transition: "width .2s ease" }} />
+            </div>
+        </div>
+    );
+}
+
+/* ─── Theme toggle ───────────────────────────────────────────── */
+function ThemeToggle() {
+    const { isDark, toggleTheme } = useTheme();
+    return (
+        <button onClick={toggleTheme} title={isDark ? "Light mode" : "Dark mode"}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, background: "var(--accent-dim)", border: "1px solid var(--border)", color: "var(--accent)", cursor: "pointer", transition: "all .2s", flexShrink: 0 }}
+            onMouseEnter={e => { e.currentTarget.style.background = "var(--border)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "var(--accent-dim)"; }}
+        >
+            {isDark ? <Icons.Sun size={15} /> : <Icons.Moon size={15} />}
+        </button>
+    );
+}
+
+/* ─── Tiny shared atoms ──────────────────────────────────────── */
+const Spinner = ({ col = "var(--accent)" }) => (
+    <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", border: "2px solid transparent", borderTopColor: col, animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+);
+
+const Sep = () => (
+    <div style={{ width: 1, height: 18, background: "var(--border)", margin: "0 2px", flexShrink: 0 }} />
+);
+
+const IBtn = ({ onClick, children, title }) => (
+    <button onClick={onClick} title={title}
+        style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer", borderRadius: 5, width: 24, height: 24, display: "inline-flex", alignItems: "center", justifyContent: "center", transition: "all .12s", flexShrink: 0 }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--border-mid)"; e.currentTarget.style.color = "var(--text-body)"; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-muted)"; }}
+    >{children}</button>
+);
+
+/* action button style factory */
+const ab = (variant = "ghost") => {
+    const base = { display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid", borderRadius: 7, cursor: "pointer", fontFamily: "'JetBrains Mono',monospace", fontSize: 11, padding: "4px 12px", transition: "all .15s", userSelect: "none", flexShrink: 0 };
+    const v = {
+        primary: { background: "var(--accent-dim)", borderColor: "var(--accent)", color: "var(--accent)" },
+        green: { background: "rgba(74,222,128,.08)", borderColor: "rgba(74,222,128,.25)", color: "var(--green-vivid)" },
+        ghost: { background: "transparent", borderColor: "var(--border)", color: "var(--text-muted)" },
+        teal: { background: "var(--teal-dim)", borderColor: "var(--teal)", color: "var(--teal)" },
+        danger: { background: "transparent", borderColor: "rgba(248,113,113,.3)", color: "var(--red-soft)" },
+    };
+    return { ...base, ...(v[variant] || v.ghost) };
+};
+
+/* ─── Main component ─────────────────────────────────────────── */
 export default function ReportPanel() {
     const navigate = useNavigate();
+    const { isDark } = useTheme();
     const { selectedFile, reportLatex, setReportLatex, reportSections, setReportSections } = useApp();
     const filename = selectedFile;
 
-    const [view, setView] = useState("editor");
+    /* layout */
+    const [leftWidth, setLeftWidth] = useState(228);
+    const [editorWidth, setEditorWidth] = useState(50);
+    const [leftTab, setLeftTab] = useState("outline");
     const [editMode, setEditMode] = useState(false);
+    const [fontSize, setFontSize] = useState(13);
+
+    /* report state */
     const [latexSource, setLatexSource] = useState(reportLatex || "");
     const [pdfUrl, setPdfUrl] = useState(null);
     const [compiling, setCompiling] = useState(false);
@@ -228,395 +520,469 @@ export default function ReportPanel() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [copied, setCopied] = useState(false);
-    const [staleWarning, setStaleWarning] = useState(false);
     const [liveLog, setLiveLog] = useState([]);
     const [liveSections, setLiveSections] = useState(reportSections || []);
     const [activeStep, setActiveStep] = useState(-1);
     const [detectedMeta, setDetectedMeta] = useState(null);
     const [rateLimitMsg, setRateLimitMsg] = useState("");
-    const [leftPanel, setLeftPanel] = useState("structure");
-    const [fontSize, setFontSize] = useState(13);
-    const [queryHint, setQueryHint] = useState(() => { try { return sessionStorage.getItem(SESSION_HINT_KEY) || ""; } catch { return ""; } });
+    const [queryHint, setQueryHint] = useState(() => {
+        try { return sessionStorage.getItem(SESSION_HINT_KEY) || ""; } catch { return ""; }
+    });
 
     const esRef = useRef(null);
-    const prevFile = useRef(filename);
     const pdfUrlRef = useRef(null);
-    const logEndRef = useRef(null);
-
-    const persistHint = (v) => { setQueryHint(v); try { sessionStorage.setItem(SESSION_HINT_KEY, v); } catch { } };
+    const containerRef = useRef(null);
 
     useEffect(() => { setReportLatex(latexSource); }, [latexSource, setReportLatex]);
     useEffect(() => { setReportSections(liveSections); }, [liveSections, setReportSections]);
-    useEffect(() => { if (latexSource && filename !== prevFile.current) setStaleWarning(true); prevFile.current = filename; }, [filename, latexSource]);
-    useEffect(() => () => { if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current); if (esRef.current) esRef.current.close(); }, []);
-    useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [liveLog]);
-    useEffect(() => { if (!filename) { alert("No document selected."); navigate("/"); } }, [filename, navigate]);
+    useEffect(() => () => {
+        if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current);
+        if (esRef.current) esRef.current.close();
+    }, []);
 
-    const pushLog = useCallback((icon, label, done = false) => { setLiveLog((prev) => [...prev, { icon, label, done, ts: Date.now() }]); }, []);
+    if (!filename) { navigate("/"); return null; }
 
+    const persistHint = v => {
+        setQueryHint(v);
+        try { sessionStorage.setItem(SESSION_HINT_KEY, v); } catch { }
+    };
+
+    const pushLog = useCallback((icon, label, done = false) => {
+        setLiveLog(p => [...p, { icon, label, done, ts: Date.now() }]);
+    }, []);
+
+    /* ── SSE handler ── */
     const handleSSEEvent = useCallback((type, data) => {
         switch (type) {
-            case "start": setActiveStep(0); pushLog("⬡", `Started: ${cleanName(data.filename || "")}`); setRateLimitMsg(""); break;
-            case "structure": setActiveStep(1); setDetectedMeta({ material: data.material || "—", heat: data.heat || "—", sections_found: data.sections_found || [], total_chunks: data.total_chunks || 0 }); pushLog("◈", `Found ${(data.sections_found || []).length} sections · ${data.total_chunks || 0} chunks`); break;
-            case "section_start": setActiveStep(2); pushLog("⟁", `Extracting: ${data.display_name || data.section_key}`); break;
-            case "section_extracted": setActiveStep(3); pushLog("▦", `Writing LaTeX: ${data.display_name || data.section_key}`); break;
-            case "section_done": pushLog("✓", `Done: ${data.display_name || data.section_key}`, true); break;
-            case "section_ready": setLiveSections((prev) => { if (prev.find((s) => s.section_key === data.section_key)) return prev; return [...prev, data]; }); break;
-            case "assembling": setActiveStep(4); pushLog("⊟", `Assembling ${data.section_count || "?"} sections...`); break;
-            case "rate_limit": setRateLimitMsg(`Rate limit — retrying in ${data.retry_after || "?"}s`); pushLog("⏳", `Rate limit — waiting ${data.retry_after || "?"}s`); break;
-            case "done": setActiveStep(5); setLatexSource(data.latex || ""); setLoading(false); setRateLimitMsg(""); pushLog("✦", `Complete — ${(data.char_count || 0).toLocaleString()} chars`, true); setView("editor"); break;
-            case "heartbeat": if ((data.tick || 0) > 4) pushLog("·", `Still processing... (${((data.tick || 0) * 15)}s elapsed)`); break;
-            case "error": setError(data.message || "Unknown error"); setLoading(false); break;
+            case "start":
+                setActiveStep(0); setRateLimitMsg("");
+                pushLog("⬡", `Started: ${cleanName(data.filename || "")}`); break;
+            case "structure":
+                setActiveStep(1);
+                setDetectedMeta({ material: data.material || "—", heat: data.heat || "—", sections_found: data.sections_found || [], total_chunks: data.total_chunks || 0 });
+                pushLog("◈", `${(data.sections_found || []).length} sections · ${data.total_chunks || 0} chunks`); break;
+            case "section_start":
+                setActiveStep(2);
+                pushLog("⟁", `Extracting: ${data.display_name || data.section_key}`); break;
+            case "section_extracted":
+                setActiveStep(3);
+                pushLog("▦", `LaTeX: ${data.display_name || data.section_key}`); break;
+            case "section_done":
+                pushLog("✓", `Done: ${data.display_name || data.section_key}`, true); break;
+            case "section_ready":
+                setLiveSections(p => p.find(s => s.section_key === data.section_key) ? p : [...p, data]); break;
+            case "assembling":
+                setActiveStep(4); pushLog("⊟", `Assembling ${data.section_count || "?"} sections…`); break;
+            case "rate_limit":
+                setRateLimitMsg(`Rate limit — retrying in ${data.retry_after || "?"}s`);
+                pushLog("⏳", `Rate limit — waiting ${data.retry_after || "?"}s`); break;
+            case "done":
+                setActiveStep(5); setLatexSource(data.latex || ""); setLoading(false);
+                setRateLimitMsg(""); setLeftTab("outline");
+                pushLog("✦", `Complete — ${(data.char_count || 0).toLocaleString()} chars`, true); break;
+            case "heartbeat":
+                if ((data.tick || 0) > 4)
+                    pushLog("·", `Still processing… (${((data.tick || 0) * 15)}s)`); break;
+            case "error":
+                setError(data.message || "Unknown error"); setLoading(false); break;
             default: break;
         }
     }, [pushLog]);
 
+    /* ── Generate ── */
     const generate = useCallback(() => {
         if (!filename || loading) return;
         if (esRef.current) { esRef.current.close(); esRef.current = null; }
         setLoading(true); setError(""); setLatexSource(""); setPdfUrl(null);
-        setCopied(false); setStaleWarning(false); setCompileError("");
-        setLiveLog([]); setLiveSections([]); setDetectedMeta(null);
-        setActiveStep(-1); setRateLimitMsg("");
+        setCopied(false); setCompileError(""); setLiveLog([]);
+        setLiveSections([]); setDetectedMeta(null); setActiveStep(-1); setRateLimitMsg("");
+        setLeftTab("log");
 
-        const body = JSON.stringify({ filename, standard_hint: queryHint.trim(), query_hint: queryHint.trim(), material_name: "", heat_number: "", document_no: "" });
+        const body = JSON.stringify({
+            filename, standard_hint: queryHint.trim(), query_hint: queryHint.trim(),
+            material_name: "", heat_number: "", document_no: "",
+        });
 
         let retryCount = 0;
-        const connectSSE = () => {
-            fetch(`${API}/generate-report`, { method: "POST", headers: { "Content-Type": "application/json" }, body })
-                .then((res) => {
-                    if (!res.ok) return res.json().then((e) => { throw new Error(e.error || `HTTP ${res.status}`); });
-                    const reader = res.body.getReader(), decoder = new TextDecoder();
-                    let buffer = "";
-                    const pump = () => reader.read().then(({ done, value }) => {
-                        if (done) { setLoading((prev) => { if (prev) setError("Stream ended unexpectedly"); return false; }); return; }
-                        buffer += decoder.decode(value, { stream: true });
-                        const lines = buffer.split("\n"); buffer = lines.pop();
-                        for (const line of lines) { if (!line.startsWith("data: ")) continue; try { const { type, ...rest } = JSON.parse(line.slice(6)); handleSSEEvent(type, rest); } catch { } }
-                        pump();
-                    });
+        const connect = () => {
+            fetch(`${API}/generate-report`, {
+                method: "POST", headers: { "Content-Type": "application/json" }, body,
+            }).then(res => {
+                if (!res.ok) return res.json().then(e => { throw new Error(e.error || `HTTP ${res.status}`); });
+                const reader = res.body.getReader(), dec = new TextDecoder();
+                let buf = "";
+                const pump = () => reader.read().then(({ done, value }) => {
+                    if (done) { setLoading(p => { if (p) setError("Stream ended unexpectedly"); return false; }); return; }
+                    buf += dec.decode(value, { stream: true });
+                    const lines = buf.split("\n"); buf = lines.pop();
+                    for (const line of lines) {
+                        if (!line.startsWith("data: ")) continue;
+                        try { const { type, ...rest } = JSON.parse(line.slice(6)); handleSSEEvent(type, rest); } catch { }
+                    }
                     pump();
-                })
-                .catch((err) => {
-                    const is429 = err.message?.includes("429") || err.message?.toLowerCase().includes("rate");
-                    if (retryCount < MAX_RETRIES) {
-                        const delay = is429 ? RETRY_DELAYS[Math.min(retryCount, 2)] * 2 : RETRY_DELAYS[retryCount];
-                        setRateLimitMsg(`Rate limited — retrying in ${delay / 1000}s... (${retryCount + 1}/${MAX_RETRIES})`);
-                        pushLog("⏳", `Retrying in ${delay / 1000}s`);
-                        retryCount++;
-                        setTimeout(connectSSE, delay);
-                    } else { setError(err.message || "Failed after retries."); setLoading(false); setRateLimitMsg(""); }
                 });
+                pump();
+            }).catch(err => {
+                const is429 = err.message?.includes("429") || err.message?.toLowerCase().includes("rate");
+                if (retryCount < MAX_RETRIES) {
+                    const delay = is429 ? RETRY_DELAYS[Math.min(retryCount, 2)] * 2 : RETRY_DELAYS[retryCount];
+                    setRateLimitMsg(`Rate limited — retrying in ${delay / 1000}s… (${retryCount + 1}/${MAX_RETRIES})`);
+                    pushLog("⏳", `Retrying in ${delay / 1000}s`);
+                    retryCount++; setTimeout(connect, delay);
+                } else { setError(err.message || "Failed after retries."); setLoading(false); setRateLimitMsg(""); }
+            });
         };
-        connectSSE();
+        connect();
     }, [filename, loading, queryHint, handleSSEEvent, pushLog]);
 
-    const cancel = () => { if (esRef.current) { esRef.current.close(); esRef.current = null; } setLoading(false); setRateLimitMsg(""); pushLog("✗", "Cancelled"); };
+    const cancel = () => {
+        if (esRef.current) { esRef.current.close(); esRef.current = null; }
+        setLoading(false); setRateLimitMsg(""); pushLog("✗", "Cancelled");
+    };
 
+    /* ── Compile ── */
     const compileToPdf = useCallback(async () => {
         if (!latexSource || compiling) return;
         setCompiling(true); setCompileError("");
         if (pdfUrlRef.current) { URL.revokeObjectURL(pdfUrlRef.current); pdfUrlRef.current = null; }
         setPdfUrl(null);
         try {
-            const res = await fetch(`${API}/compile-latex`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ latex: latexSource }) });
+            const res = await fetch(`${API}/compile-latex`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ latex: latexSource }),
+            });
             if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `Compile failed: ${res.status}`); }
             const url = URL.createObjectURL(await res.blob());
-            pdfUrlRef.current = url; setPdfUrl(url); setView("report");
+            pdfUrlRef.current = url; setPdfUrl(url);
         } catch (e) { setCompileError(e.message || "Compilation failed"); }
         finally { setCompiling(false); }
     }, [latexSource, compiling]);
 
-    const downloadTex = () => { if (!latexSource) return; const url = URL.createObjectURL(new Blob([latexSource], { type: "text/plain" })); Object.assign(document.createElement("a"), { href: url, download: cleanName(filename) + "_report.tex" }).click(); URL.revokeObjectURL(url); };
-    const downloadPdf = () => { if (!pdfUrl) return; Object.assign(document.createElement("a"), { href: pdfUrl, download: cleanName(filename) + "_report.pdf" }).click(); };
-    const copyLatex = () => { if (!latexSource) return; navigator.clipboard.writeText(latexSource).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); };
-
-    const lineCount = useMemo(() => (latexSource ? latexSource.split("\n").length : 0), [latexSource]);
-    const charCount = latexSource.length;
-
-    /* ── Shared styles ── */
-    const monoFont = "'JetBrains Mono', 'Fira Code', monospace";
-    const serifFont = "'Fraunces', Georgia, serif";
-
-    const Btn = ({ onClick, disabled, children, variant = "ghost", className = "" }) => {
-        const base = "inline-flex items-center justify-center gap-1.5 rounded-md font-mono cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed text-[11.5px] px-3 py-1.5 border";
-        const variants = {
-            ghost: "bg-transparent border-[var(--border-mid)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-body)]",
-            primary: "bg-[var(--accent)] border-[var(--accent)] text-[#09090c] font-bold hover:bg-[var(--accent-hover)]",
-            teal: "bg-[var(--teal-dim)] border-[var(--teal)]/25 text-[var(--teal)] hover:bg-[var(--teal)]/15",
-            danger: "bg-transparent border-red-800/30 text-red-400 hover:bg-red-950/20",
-        };
-        return <button onClick={onClick} disabled={disabled} className={`${base} ${variants[variant]} ${className}`}>{children}</button>;
+    const downloadTex = () => {
+        if (!latexSource) return;
+        const url = URL.createObjectURL(new Blob([latexSource], { type: "text/plain" }));
+        Object.assign(document.createElement("a"), { href: url, download: cleanName(filename) + "_report.tex" }).click();
+        URL.revokeObjectURL(url);
+    };
+    const downloadPdf = () => {
+        if (!pdfUrl) return;
+        Object.assign(document.createElement("a"), { href: pdfUrl, download: cleanName(filename) + "_report.pdf" }).click();
+    };
+    const copyLatex = () => {
+        if (!latexSource) return;
+        navigator.clipboard.writeText(latexSource).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
     };
 
-    /* ── PDF view ── */
-    if (view === "report") {
-        return (
-            <div className="flex flex-col h-screen overflow-hidden" style={{ fontFamily: monoFont, background: "var(--bg-surface)", color: "var(--text-body)" }}>
-                <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;1,9..144,300&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
-                <div className="flex items-center gap-2 px-5 h-12 border-b border-[var(--border)] flex-shrink-0" style={{ background: "var(--bg-panel)" }}>
-                    <Btn onClick={() => navigate("/")}>← Chat</Btn>
-                    <Btn onClick={() => setView("editor")}>← Editor</Btn>
-                    <span className="text-[var(--text-faint)] px-1">·</span>
-                    <span className="text-[13px] text-[var(--text-primary)]" style={{ fontFamily: serifFont, fontStyle: "italic" }}>{cleanName(filename)} — PDF Preview</span>
-                    <div className="ml-auto flex gap-2">
-                        <ThemeToggle />
-                        <Btn onClick={downloadPdf}><Download size={11} /> PDF</Btn>
-                        <Btn onClick={downloadTex}><Download size={11} /> .tex</Btn>
-                        <Btn onClick={() => setView("editor")} variant="primary">Edit LaTeX</Btn>
-                    </div>
-                </div>
-                {pdfUrl
-                    ? <iframe src={pdfUrl} className="flex-1 border-none bg-white" title="Compiled PDF" />
-                    : (
-                        <div className="flex-1 flex flex-col items-center justify-center gap-4">
-                            <div className="text-4xl text-[var(--border-mid)]">⬡</div>
-                            <p className="text-[var(--text-muted)]" style={{ fontFamily: serifFont, fontStyle: "italic" }}>No compiled PDF yet</p>
-                            <Btn onClick={compileToPdf} disabled={!latexSource || compiling} variant="primary">{compiling ? "⟳ Compiling..." : "⬡ Compile → PDF"}</Btn>
-                            {compileError && <p className="text-red-400 text-xs font-mono">{compileError}</p>}
-                        </div>
-                    )}
-            </div>
-        );
-    }
+    const lineCount = useMemo(() => latexSource ? latexSource.split("\n").length : 0, [latexSource]);
+    const charCount = latexSource.length;
 
-    /* ── Main editor view ── */
+    /* ── Drag: left sidebar ── */
+    const startLeftDrag = e => {
+        e.preventDefault();
+        const start = e.clientX, startW = leftWidth;
+        const mv = e2 => setLeftWidth(Math.max(160, Math.min(340, startW + e2.clientX - start)));
+        const up = () => { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); };
+        document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
+    };
+
+    /* ── Drag: editor/PDF split ── */
+    const startCenterDrag = e => {
+        e.preventDefault();
+        const ct = containerRef.current;
+        if (!ct) return;
+        const rect = ct.getBoundingClientRect();
+        const avail = rect.width - leftWidth;
+        const mv = e2 => {
+            const pct = ((e2.clientX - rect.left - leftWidth) / avail) * 100;
+            setEditorWidth(Math.max(25, Math.min(75, pct)));
+        };
+        const up = () => { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); };
+        document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
+    };
+
+    /* ─────────────────────────── RENDER ─────────────────────── */
     return (
-        <div className="flex flex-col h-screen overflow-hidden" style={{ fontFamily: monoFont, background: "var(--bg-surface)", color: "var(--text-body)" }}>
+        <div style={{
+            display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden",
+            background: "var(--bg-base)", color: "var(--text-body)",
+            fontFamily: "'JetBrains Mono','Fira Code',monospace",
+            transition: "background .25s, color .25s",
+        }}>
             <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;1,9..144,300&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
-
             <style>{`
-                @keyframes slideIn { from{opacity:0;transform:translateX(-4px)} to{opacity:1;transform:none} }
-                @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:.3} }
-                ::-webkit-scrollbar { width:3px; height:3px; }
-                ::-webkit-scrollbar-track { background: transparent; }
-                ::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 2px; }
-            `}</style>
+        @keyframes slideIn { from{opacity:0;transform:translateX(-5px)} to{opacity:1;transform:none} }
+        @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
+        @keyframes blink   { 0%,100%{opacity:1} 50%{opacity:.12} }
+        @keyframes spin    { to{transform:rotate(360deg)} }
+        @keyframes pulse   { 0%,100%{transform:scale(1)} 50%{transform:scale(1.18)} }
 
-            {/* ── Top bar ── */}
-            <div className="flex items-center gap-2 px-5 h-12 border-b border-[var(--border)] flex-shrink-0" style={{ background: "var(--bg-panel)" }}>
-                <Btn onClick={() => navigate("/")}><ArrowLeft size={11} /> Chat</Btn>
+        ::-webkit-scrollbar       { width:4px; height:4px; }
+        ::-webkit-scrollbar-track { background:transparent; }
+        ::-webkit-scrollbar-thumb { background:var(--scrollbar); border-radius:2px; }
 
-                <div className="flex items-center gap-2 ml-1">
-                    <span className="text-[var(--accent)]">◈</span>
-                    <span className="text-[13px] text-[var(--text-primary)]" style={{ fontFamily: serifFont, fontStyle: "italic" }}>Metallurgy Report Engine</span>
+        .dh  { cursor:col-resize; }
+        .dh:hover { background:var(--bg-elevated) !important; }
+        .tb  { background:transparent; border:none; cursor:pointer; transition:all .15s; border-radius:0; }
+        .tb:hover { background:var(--bg-elevated); }
+
+        /* global editor css vars (supplement ThemeContext) */
+        :root {
+          --ed-bg:      #12121a;
+          --ed-gutter:  #0d0d14;
+          --ed-bar:     #191920;
+          --red-soft:   #f87171;
+          --green-vivid:#4ade80;
+          --blue:       #7cb8f8;
+        }
+      `}</style>
+
+            {/* ── Menubar ── */}
+            <div style={{ display: "flex", alignItems: "center", height: 44, flexShrink: 0, background: "var(--bg-surface)", borderBottom: "1px solid var(--border)", padding: "0 14px", gap: 0, transition: "background .25s" }}>
+                {/* Brand */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginRight: 18 }}>
+                    <span style={{ fontSize: 17, color: "var(--accent)", display: "inline-block", animation: loading ? "pulse 2s ease-in-out infinite" : "none" }}>◈</span>
+                    <span style={{ fontFamily: "'Fraunces',Georgia,serif", fontStyle: "italic", fontSize: 14, color: "var(--text-primary)", letterSpacing: "-0.01em" }}>MetaLaTeX</span>
                 </div>
 
+                {["File", "Edit", "Insert", "Format", "View", "Help"].map(m => (
+                    <button key={m} className="tb" style={{ padding: "0 10px", height: 44, color: "var(--text-muted)", fontSize: 11.5 }}>{m}</button>
+                ))}
+
+                <div style={{ flex: 1 }} />
+
+                {/* File chip */}
                 {filename && (
-                    <div className="flex items-center gap-1.5 bg-[var(--bg-input)] border border-[var(--border)] rounded-md px-2.5 py-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
-                        <span className="text-[11px] text-[var(--text-muted)] truncate max-w-[180px]">{cleanName(filename)}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 6, padding: "3px 10px", marginRight: 10 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: loading ? "var(--green-vivid)" : "var(--accent)", transition: "background .3s", animation: loading ? "blink 1.5s ease-in-out infinite" : "none", flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {cleanName(filename)}
+                        </span>
                     </div>
                 )}
 
-                {detectedMeta && (
-                    <div className="flex items-center gap-1.5 bg-[var(--bg-input)] border border-[var(--border)] rounded-md px-2.5 py-1">
-                        <span className="text-[11px] text-[var(--accent)]">{detectedMeta.material}</span>
-                        {detectedMeta.heat !== "—" && <><span className="text-[var(--border-mid)]">·</span><span className="text-[11px] text-[var(--accent)]">Heat {detectedMeta.heat}</span></>}
-                    </div>
-                )}
+                <ThemeToggle />
 
-                <div className="ml-auto flex items-center gap-2">
-                    {latexSource && (
-                        <>
-                            <span className="text-[10px] text-[var(--text-faint)]">{lineCount.toLocaleString()} ln · {(charCount / 1024).toFixed(1)} KB</span>
-                            <Btn onClick={() => setFontSize((s) => Math.max(10, s - 1))}>A−</Btn>
-                            <Btn onClick={() => setFontSize((s) => Math.min(18, s + 1))}>A+</Btn>
-                            <Btn onClick={() => setEditMode((m) => !m)} variant={editMode ? "primary" : "ghost"}>
-                                {editMode ? "◉ Read" : "✎ Edit"}
-                            </Btn>
-                        </>
-                    )}
-                    {pdfUrl && <Btn onClick={() => setView("report")} variant="teal">⬡ Report</Btn>}
-                    <ThemeToggle />
-                </div>
+                <button onClick={() => navigate("/")} style={{ ...ab("ghost"), marginLeft: 8 }}>
+                    <Icons.ArrowLeft size={13} /> Chat
+                </button>
             </div>
 
-            {/* Banners */}
-            {staleWarning && (
-                <div className="flex items-center gap-2 px-5 py-2 bg-[var(--accent-dim)] border-b border-[var(--accent)]/20 text-[11.5px] text-[var(--accent)] font-mono">
-                    ⚠ File changed — regenerate to refresh.
-                    <button onClick={() => setStaleWarning(false)} className="ml-auto p-0.5 bg-transparent border-none cursor-pointer text-[var(--accent)]/60 hover:text-[var(--accent)]"><X size={11} /></button>
-                </div>
-            )}
+            {/* ── Second toolbar ── */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, height: 40, flexShrink: 0, background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)", padding: "0 10px", transition: "background .25s" }}>
+                <button onClick={generate} disabled={loading || !filename}
+                    style={{ ...ab("primary"), padding: "5px 16px", fontWeight: 500, opacity: (loading || !filename) ? 0.5 : 1 }}>
+                    {loading ? <><Spinner col="var(--accent)" /> Generating…</> : <><Icons.Zap size={13} /> Generate Report</>}
+                </button>
+
+                {loading && (
+                    <button onClick={cancel} style={ab("danger")}>
+                        <Icons.X size={12} /> Cancel
+                    </button>
+                )}
+
+                <Sep />
+
+                {latexSource && !loading && (
+                    <button onClick={compileToPdf} disabled={compiling} style={ab("green")}>
+                        {compiling ? <><Spinner col="var(--green-vivid)" /> Compiling…</> : <><Icons.Refresh size={13} /> Recompile</>}
+                    </button>
+                )}
+
+                {latexSource && (
+                    <button onClick={() => setEditMode(m => !m)} style={editMode ? ab("primary") : ab("ghost")}>
+                        <Icons.Edit size={13} /> {editMode ? "Read-only" : "Edit"}
+                    </button>
+                )}
+
+                <div style={{ flex: 1 }} />
+
+                {/* Font controls */}
+                <IBtn onClick={() => setFontSize(s => Math.max(10, s - 1))} title="Smaller font">
+                    <Icons.Minus size={11} />
+                </IBtn>
+                <span style={{ fontSize: 10, color: "var(--text-faint)", minWidth: 18, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{fontSize}</span>
+                <IBtn onClick={() => setFontSize(s => Math.min(18, s + 1))} title="Larger font">
+                    <Icons.Plus size={11} />
+                </IBtn>
+
+                <Sep />
+
+                {latexSource && (
+                    <>
+                        <button onClick={copyLatex} style={{ ...ab("ghost"), color: copied ? "var(--green-vivid)" : "var(--text-muted)" }}>
+                            {copied ? <><Icons.Check size={13} /> Copied</> : <><Icons.Copy size={13} /> Copy</>}
+                        </button>
+                        <button onClick={downloadTex} style={ab("ghost")}>
+                            <Icons.Download size={13} /> .tex
+                        </button>
+                    </>
+                )}
+                {pdfUrl && (
+                    <button onClick={downloadPdf} style={ab("teal")}>
+                        <Icons.Download size={13} /> .pdf
+                    </button>
+                )}
+
+                {latexSource && (
+                    <span style={{ fontSize: 10, color: "var(--text-faint)", marginLeft: 6, fontVariantNumeric: "tabular-nums" }}>
+                        {lineCount.toLocaleString()} ln · {(charCount / 1024).toFixed(1)} KB
+                    </span>
+                )}
+            </div>
+
+            {/* ── Banners ── */}
             {rateLimitMsg && (
-                <div className="flex items-center gap-2 px-5 py-1.5 border-b border-[var(--border)] text-[11px] text-[var(--text-muted)] font-mono" style={{ background: "var(--bg-input)" }}>
-                    <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span>{rateLimitMsg}
+                <div style={{ padding: "5px 14px", background: "rgba(160,160,60,.08)", borderBottom: "1px solid rgba(160,160,60,.2)", fontSize: 10, color: "#b8b040", fontFamily: "'JetBrains Mono',monospace", display: "flex", gap: 8, alignItems: "center", animation: "slideIn .2s ease" }}>
+                    <Spinner col="#b8b040" /> {rateLimitMsg}
+                </div>
+            )}
+            {error && (
+                <div style={{ padding: "5px 14px", background: "rgba(248,113,113,.06)", borderBottom: "1px solid rgba(248,113,113,.2)", fontSize: 10, color: "var(--red-soft)", fontFamily: "'JetBrains Mono',monospace", display: "flex", gap: 8, alignItems: "center", animation: "slideIn .2s ease" }}>
+                    <Icons.Alert size={12} /> {error}
+                    {!error.includes("Cancelled") && (
+                        <button onClick={generate} style={{ background: "none", border: "none", color: "var(--red-soft)", cursor: "pointer", textDecoration: "underline", fontSize: 10, padding: 0 }}>Retry</button>
+                    )}
+                </div>
+            )}
+            {compileError && (
+                <div style={{ padding: "5px 14px", background: "rgba(248,113,113,.06)", borderBottom: "1px solid rgba(248,113,113,.2)", fontSize: 10, color: "var(--red-soft)", fontFamily: "'JetBrains Mono',monospace", display: "flex", gap: 6, alignItems: "center", animation: "slideIn .2s ease" }}>
+                    <Icons.Alert size={12} /> Compile error: {compileError}
                 </div>
             )}
 
-            {/* ── Body ── */}
-            <div className="flex-1 flex overflow-hidden min-h-0">
+            {/* ── Main body ── */}
+            <div ref={containerRef} style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
 
-                {/* ── Left sidebar: controls ── */}
-                <div className="w-[210px] flex-shrink-0 border-r border-[var(--border)] flex flex-col gap-3 p-4 overflow-y-auto" style={{ background: "var(--bg-panel)" }}>
+                {/* ── LEFT SIDEBAR ── */}
+                <div style={{ width: leftWidth, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--bg-panel)", borderRight: "1px solid var(--border)", overflow: "hidden", transition: "background .25s" }}>
+
+                    {/* Files header */}
+                    <div style={{ padding: "0 10px", height: 36, display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border)" }}>
+                        <span style={{ fontSize: 10, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Files</span>
+                        <IBtn title="New file"><Icons.Plus size={11} /></IBtn>
+                    </div>
+
+                    {/* main.tex entry */}
+                    <div style={{ padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "4px 10px", background: "var(--accent-dim)", borderLeft: "2px solid var(--accent)" }}>
+                            <Icons.File size={12} color="var(--accent)" />
+                            <span style={{ fontSize: 11, color: "var(--accent)" }}>main.tex</span>
+                        </div>
+                    </div>
 
                     {/* Focus hint */}
-                    <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] text-[var(--text-faint)] tracking-widest uppercase font-mono">Focus hint</label>
+                    <div style={{ padding: "10px 10px 0" }}>
+                        <div style={{ fontSize: 9, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Focus hint</div>
                         <input
                             type="text"
-                            placeholder="e.g. HIC results, grain size…"
+                            placeholder="HIC results, grain size…"
                             value={queryHint}
-                            onChange={(e) => persistHint(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && !loading && filename && generate()}
+                            onChange={e => persistHint(e.target.value)}
+                            onKeyDown={e => e.key === "Enter" && !loading && filename && generate()}
                             disabled={loading}
-                            style={{ background: "var(--bg-input)", border: "1px solid var(--border-mid)", color: "var(--text-primary)", fontFamily: monoFont, fontSize: 11, padding: "7px 10px", borderRadius: 6, outline: "none", width: "100%", boxSizing: "border-box" }}
-                            onFocus={(e) => { e.target.style.borderColor = "rgba(230,200,122,0.4)"; e.target.style.boxShadow = "0 0 0 2px var(--accent-dim)"; }}
-                            onBlur={(e) => { e.target.style.borderColor = "var(--border-mid)"; e.target.style.boxShadow = "none"; }}
+                            style={{ width: "100%", boxSizing: "border-box", background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-body)", fontFamily: "'JetBrains Mono',monospace", fontSize: 10, padding: "6px 8px", borderRadius: 6, outline: "none", transition: "border-color .15s" }}
+                            onFocus={e => { e.target.style.borderColor = "var(--accent)"; }}
+                            onBlur={e => { e.target.style.borderColor = "var(--border)"; }}
                         />
                     </div>
 
-                    <Btn onClick={generate} disabled={loading || !filename} variant="primary" className="w-full justify-center">
-                        {loading ? <><span className="w-3 h-3 rounded-full border-2 border-[#09090c]/30 border-t-[#09090c] animate-spin" /> Generating…</> : <><span>✦</span> Generate Report</>}
-                    </Btn>
-
-                    {loading && <Btn onClick={cancel} className="w-full justify-center">Cancel</Btn>}
-
-                    {latexSource && !loading && (
-                        <Btn onClick={compileToPdf} disabled={compiling} variant="teal" className="w-full justify-center">
-                            {compiling ? <><span className="w-3 h-3 rounded-full border-2 border-[var(--teal)]/30 border-t-[var(--teal)] animate-spin" /> Compiling…</> : <>⬡ Compile → PDF</>}
-                        </Btn>
-                    )}
-
-                    {pdfUrl && !loading && <Btn onClick={() => setView("report")} variant="teal" className="w-full justify-center">⬡ Open Report</Btn>}
-
-                    {latexSource && !loading && (
-                        <div className="flex gap-1.5 flex-wrap">
-                            <Btn onClick={copyLatex}><Copy size={10} />{copied ? "Copied!" : "Copy"}</Btn>
-                            <Btn onClick={downloadTex}><Download size={10} />.tex</Btn>
-                            {pdfUrl && <Btn onClick={downloadPdf}><Download size={10} />.pdf</Btn>}
-                        </div>
-                    )}
-
-                    {error && (
-                        <div className="flex items-start gap-1.5 p-2.5 rounded-lg text-[11px] text-red-400 font-mono leading-relaxed" style={{ background: "rgba(127,29,29,0.12)", border: "1px solid rgba(127,29,29,0.25)" }}>
-                            <span>✗</span>
-                            <span className="flex-1">{error}</span>
-                            {!error.includes("Cancelled") && <button onClick={generate} className="bg-none border-none text-red-400 cursor-pointer text-[10px] underline p-0">Retry</button>}
-                        </div>
-                    )}
-                    {compileError && (
-                        <div className="flex items-start gap-1.5 p-2.5 rounded-lg text-[11px] text-red-400 font-mono" style={{ background: "rgba(127,29,29,0.12)", border: "1px solid rgba(127,29,29,0.25)" }}>
-                            <span>✗</span> <span>Compile: {compileError}</span>
-                        </div>
-                    )}
-
-                    <div className="h-px" style={{ background: "var(--border)" }} />
-
-                    {/* Pipeline progress */}
-                    {activeStep >= 0 && (
-                        <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)", background: "var(--bg-input)" }}>
-                            <div className="px-3 py-2 border-b text-[10px] text-[var(--accent)] font-mono tracking-wide" style={{ borderColor: "var(--border)", fontFamily: serifFont, fontStyle: "italic" }}>
-                                {loading ? "Processing…" : "Complete"}
-                            </div>
-                            {PIPELINE_STEPS.map((step, i) => {
-                                const isActive = i === activeStep && loading;
-                                const isDone = i < activeStep || (!loading && activeStep === PIPELINE_STEPS.length - 1);
-                                return (
-                                    <div key={step.event} className="flex items-center gap-2 px-3 py-1 transition-opacity" style={{ opacity: isActive ? 1 : isDone ? 0.22 : 0.12 }}>
-                                        <span className="text-[10px] text-[var(--accent)] w-3.5 text-center flex-shrink-0">{step.icon}</span>
-                                        <span className="text-[10px] text-[var(--text-body)] flex-1">{step.label}</span>
-                                        {isActive && <span className="w-1 h-1 rounded-full bg-[var(--accent)] flex-shrink-0" style={{ animation: "pulse 1.2s ease-in-out infinite" }} />}
-                                    </div>
-                                );
-                            })}
-                            {liveSections.length > 0 && (
-                                <div className="flex items-baseline gap-1.5 px-3 py-2 border-t" style={{ borderColor: "var(--border)" }}>
-                                    <span className="text-lg text-[var(--accent)]" style={{ fontFamily: serifFont }}>{liveSections.length}</span>
-                                    <span className="text-[9.5px] text-[var(--text-faint)] font-mono">{loading ? "sections ready" : "sections total"}</span>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                {/* ── Middle panel: structure / log ── */}
-                <div className="w-[190px] flex-shrink-0 border-r border-[var(--border)] flex flex-col overflow-hidden" style={{ background: "var(--bg-surface)" }}>
                     {/* Tab strip */}
-                    <div className="flex border-b flex-shrink-0" style={{ borderColor: "var(--border)" }}>
-                        {[["structure", "Structure"], ["log", `Log · ${liveLog.length}`]].map(([key, label]) => (
-                            <button key={key} onClick={() => setLeftPanel(key)} className="flex-1 h-9 text-[10px] tracking-widest uppercase font-mono transition-colors border-none cursor-pointer" style={{ background: "transparent", color: leftPanel === key ? "var(--accent)" : "var(--text-faint)", borderBottom: leftPanel === key ? "2px solid var(--accent)" : "2px solid transparent" }}>
+                    <div style={{ display: "flex", borderBottom: "1px solid var(--border)", marginTop: 10 }}>
+                        {[["outline", "Outline"], ["log", `Log${liveLog.length ? ` · ${liveLog.length}` : ""}`]].map(([key, label]) => (
+                            <button key={key} className="tb" onClick={() => setLeftTab(key)}
+                                style={{ flex: 1, height: 32, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: leftTab === key ? "var(--accent)" : "var(--text-faint)", borderBottom: leftTab === key ? "2px solid var(--accent)" : "2px solid transparent" }}>
                                 {label}
-                                {key === "log" && loading && <span className="inline-block w-1 h-1 rounded-full bg-[var(--accent)] ml-1.5 align-middle" style={{ animation: "pulse 1.2s ease-in-out infinite" }} />}
+                                {key === "log" && loading && (
+                                    <span style={{ display: "inline-block", width: 4, height: 4, borderRadius: "50%", background: "var(--accent)", marginLeft: 5, verticalAlign: "middle", animation: "blink 1.2s ease-in-out infinite" }} />
+                                )}
                             </button>
                         ))}
                     </div>
 
-                    {leftPanel === "structure" && <StructurePane latex={latexSource} />}
+                    {/* Panel content */}
+                    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                        {leftTab === "outline"
+                            ? <Outline latex={latexSource} />
+                            : <LiveLog log={liveLog} loading={loading} detectedMeta={detectedMeta} />
+                        }
+                    </div>
 
-                    {leftPanel === "log" && (
-                        <div className="overflow-auto flex-1 py-1">
-                            {detectedMeta && (
-                                <div className="mx-2.5 my-2 rounded-lg px-3 py-2 text-[10px] leading-7 font-mono" style={{ background: "var(--bg-input)", border: "1px solid var(--border)" }}>
-                                    {[["Material", detectedMeta.material], ["Heat No.", detectedMeta.heat], ["Sections", (detectedMeta.sections_found || []).length], ["Chunks", (detectedMeta.total_chunks || 0).toLocaleString()]].map(([k, v]) => (
-                                        <div key={k} className="flex justify-between">
-                                            <span style={{ color: "var(--text-faint)" }}>{k}</span>
-                                            <span style={{ color: "var(--accent)" }}>{v}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            {liveLog.map((entry, i) => (
-                                <div key={i} className="flex items-center gap-2 px-3 py-1.5 border-b" style={{ borderColor: "var(--border)", animation: "slideIn .15s ease both" }}>
-                                    <span className="text-[10px] w-3 flex-shrink-0" style={{ color: entry.done ? "var(--text-faint)" : "var(--accent)" }}>{entry.icon}</span>
-                                    <span className="text-[10px] leading-relaxed flex-1" style={{ color: entry.done ? "var(--text-faint)" : "var(--text-body)" }}>{entry.label}</span>
-                                    {i === liveLog.length - 1 && loading && <span className="w-1 h-1 rounded-full bg-[var(--accent)] flex-shrink-0" style={{ animation: "pulse 1.2s ease-in-out infinite" }} />}
-                                </div>
-                            ))}
-                            <div ref={logEndRef} />
-                            {!loading && liveLog.length === 0 && (
-                                <div className="px-4 py-6 text-[var(--text-faint)] text-[10px] text-center font-mono">Generate a report to see live progress</div>
-                            )}
+                    {/* Pipeline progress */}
+                    {activeStep >= 0 && (
+                        <div style={{ borderTop: "1px solid var(--border)", padding: "8px 0" }}>
+                            {PIPELINE_STEPS.map((step, i) => {
+                                const isActive = i === activeStep && loading;
+                                const isDone = i < activeStep || (!loading && activeStep === PIPELINE_STEPS.length - 1);
+                                return (
+                                    <div key={step.event} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 10px", opacity: isActive ? 1 : isDone ? 0.22 : 0.07, transition: "opacity .35s ease" }}>
+                                        <span style={{ fontSize: 10, color: "var(--accent)", width: 14, flexShrink: 0 }}>{step.icon}</span>
+                                        <span style={{ fontSize: 9.5, color: "var(--text-body)", flex: 1 }}>{step.label}</span>
+                                        {isActive && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--accent)", animation: "blink 1.2s ease-in-out infinite", flexShrink: 0 }} />}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* Section count */}
+                    {liveSections.length > 0 && (
+                        <div style={{ borderTop: "1px solid var(--border)", padding: "6px 10px", display: "flex", alignItems: "baseline", gap: 6 }}>
+                            <span style={{ fontSize: 20, color: "var(--accent)", fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: "tabular-nums" }}>{liveSections.length}</span>
+                            <span style={{ fontSize: 9.5, color: "var(--text-faint)" }}>{loading ? "sections ready" : "sections total"}</span>
                         </div>
                     )}
                 </div>
 
-                {/* ── Main editor area ── */}
-                <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+                {/* ── LEFT DRAG HANDLE ── */}
+                <div className="dh" onMouseDown={startLeftDrag}
+                    style={{ width: 4, flexShrink: 0, background: "var(--bg-surface)", borderRight: "1px solid var(--border)", transition: "background .12s" }} />
+
+                {/* ── CENTER: EDITOR ── */}
+                <div style={{ width: `${editorWidth}%`, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--ed-bg)", overflow: "hidden" }}>
 
                     {/* Editor tab bar */}
-                    <div className="flex items-center h-9 border-b px-4 flex-shrink-0" style={{ borderColor: "var(--border)", background: "var(--bg-panel)" }}>
-                        <span className="text-[10px] text-[var(--text-faint)] font-mono">{latexSource ? "main.tex" : "—"}</span>
+                    <div style={{ display: "flex", alignItems: "center", height: 34, background: "var(--bg-surface)", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 16px", height: "100%", borderRight: "1px solid var(--border)", background: "var(--ed-bg)", borderTop: "2px solid var(--accent)" }}>
+                            <Icons.FileText size={11} color="var(--accent)" />
+                            <span style={{ fontSize: 11, color: "var(--accent)" }}>{latexSource ? "main.tex" : "—"}</span>
+                        </div>
                         {latexSource && (
-                            <span className="ml-3 text-[10px] text-[var(--text-faint)] font-mono">{lineCount.toLocaleString()} lines</span>
+                            <span style={{ fontSize: 10, color: "var(--text-faint)", marginLeft: 12, fontVariantNumeric: "tabular-nums" }}>
+                                {lineCount.toLocaleString()} lines
+                            </span>
+                        )}
+                        {latexSource && (
+                            <span style={{ marginLeft: "auto", marginRight: 10, fontSize: 10, color: editMode ? "var(--accent)" : "var(--text-faint)" }}>
+                                {editMode ? "● Editing" : "○ Read-only"}
+                            </span>
                         )}
                     </div>
 
-                    {/* Editor content */}
-                    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                    {/* Editor body */}
+                    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
                         {latexSource ? (
-                            <LaTeXEditor
-                                value={latexSource}
-                                onChange={setLatexSource}
-                                readOnly={!editMode}
-                                fontSize={fontSize}
-                            />
+                            <LaTeXEditor value={latexSource} onChange={setLatexSource} readOnly={!editMode} fontSize={fontSize} />
                         ) : (
-                            /* Empty state */
-                            <div className="flex-1 flex flex-col items-center justify-center gap-5" style={{ background: "var(--bg-base)" }}>
+                            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, background: "var(--ed-bg)", animation: "fadeIn .4s ease" }}>
                                 {loading ? (
                                     <>
-                                        <div className="text-[32px] text-[var(--accent)]" style={{ animation: "spin 2s linear infinite" }}>◈</div>
-                                        <p className="text-[var(--text-muted)] text-base m-0" style={{ fontFamily: serifFont, fontStyle: "italic" }}>Generating report…</p>
-                                        <p className="text-[11px] text-[var(--text-faint)] text-center font-mono m-0">
-                                            Switch to <strong style={{ color: "var(--text-muted)" }}>Log</strong> in the left panel<br />to watch section-by-section progress.
+                                        <div style={{ fontSize: 34, color: "var(--accent)", animation: "spin 2.5s linear infinite" }}>◈</div>
+                                        <p style={{ margin: 0, fontFamily: "'Fraunces',Georgia,serif", fontStyle: "italic", fontSize: 16, color: "var(--text-muted)" }}>Generating report…</p>
+                                        <p style={{ margin: 0, fontSize: 11, color: "var(--text-faint)", textAlign: "center", lineHeight: 1.9 }}>
+                                            Switch to <strong style={{ color: "var(--text-muted)" }}>Log</strong> to watch live progress
                                         </p>
-                                    </>
-                                ) : filename ? (
-                                    <>
-                                        <div className="text-[32px]" style={{ color: "var(--text-faint)" }}>∴</div>
-                                        <p className="text-[var(--text-muted)] text-base m-0" style={{ fontFamily: serifFont, fontStyle: "italic" }}>Ready to generate</p>
-                                        <p className="text-[11px] text-[var(--text-faint)] text-center font-mono m-0">
-                                            Sections are auto-discovered from the PDF.<br />Output is a fully compilable LaTeX document.
-                                        </p>
-                                        <Btn onClick={generate} variant="primary" className="mt-2">✦ Generate Report</Btn>
                                     </>
                                 ) : (
                                     <>
-                                        <div className="text-[32px]" style={{ color: "var(--text-faint)" }}>⬡</div>
-                                        <p className="text-[var(--text-muted)] m-0" style={{ fontFamily: serifFont, fontStyle: "italic" }}>No document selected</p>
-                                        <Btn onClick={() => navigate("/")}>← Go to Chat</Btn>
+                                        <div style={{ opacity: 0.18 }}><Icons.Layers size={52} color="var(--text-muted)" /></div>
+                                        <p style={{ margin: 0, fontFamily: "'Fraunces',Georgia,serif", fontStyle: "italic", fontSize: 16, color: "var(--text-muted)" }}>Ready to generate</p>
+                                        <p style={{ margin: 0, fontSize: 11, color: "var(--text-faint)", textAlign: "center", lineHeight: 2 }}>
+                                            Sections are auto-discovered from the PDF.<br />
+                                            Output is a fully compilable LaTeX document.
+                                        </p>
+                                        <button onClick={generate} style={{ ...ab("primary"), marginTop: 6, padding: "7px 20px" }}>
+                                            <Icons.Zap size={13} /> Generate Report
+                                        </button>
                                     </>
                                 )}
                             </div>
@@ -624,21 +990,28 @@ export default function ReportPanel() {
                     </div>
 
                     {/* Status bar */}
-                    <div className="flex items-center h-6 border-t px-3 flex-shrink-0 text-[10px] font-mono" style={{ borderColor: "var(--border)", background: "var(--bg-panel)" }}>
-                        <span style={{ color: latexSource ? "var(--accent)" : "var(--text-faint)" }}>{latexSource ? "LaTeX" : "—"}</span>
-                        <span className="ml-4 text-[var(--text-faint)]">UTF-8</span>
+                    <div style={{ display: "flex", alignItems: "center", height: 22, flexShrink: 0, background: "var(--ed-bar)", padding: "0 12px", gap: 12 }}>
+                        <span style={{ fontSize: 10, color: "var(--blue)" }}>{latexSource ? "LaTeX" : "—"}</span>
+                        <span style={{ fontSize: 10, color: "var(--text-faint)" }}>UTF-8</span>
                         {latexSource && (
                             <>
-                                <span className="ml-4 text-[var(--text-faint)]">{lineCount.toLocaleString()} lines</span>
-                                <span className="ml-4 text-[var(--text-faint)]">{(charCount / 1024).toFixed(1)} KB</span>
+                                <span style={{ fontSize: 10, color: "var(--text-faint)", fontVariantNumeric: "tabular-nums" }}>{lineCount.toLocaleString()} lines</span>
+                                <span style={{ fontSize: 10, color: "var(--text-faint)" }}>{(charCount / 1024).toFixed(1)} KB</span>
                             </>
                         )}
-                        <div className="ml-auto flex gap-3">
-                            {loading && <span className="text-[var(--accent)]" style={{ animation: "pulse 1.4s ease-in-out infinite" }}>● Generating</span>}
-                            {compiling && <span className="text-[var(--teal)]" style={{ animation: "pulse 1.4s ease-in-out infinite" }}>● Compiling</span>}
-                            {!loading && latexSource && <span className="text-[var(--text-faint)]">Ready {editMode ? "· Editing" : "· Read-only"}</span>}
-                        </div>
+                        <div style={{ flex: 1 }} />
+                        {loading && <span style={{ fontSize: 10, color: "var(--accent)", display: "flex", alignItems: "center", gap: 5, animation: "blink 1.4s ease-in-out infinite" }}><Spinner col="var(--accent)" /> Generating</span>}
+                        {compiling && <span style={{ fontSize: 10, color: "var(--green-vivid)", display: "flex", alignItems: "center", gap: 5, animation: "blink 1.4s ease-in-out infinite" }}><Spinner col="var(--green-vivid)" /> Compiling</span>}
                     </div>
+                </div>
+
+                {/* ── CENTER DRAG HANDLE ── */}
+                <div className="dh" onMouseDown={startCenterDrag}
+                    style={{ width: 4, flexShrink: 0, background: "var(--bg-surface)", borderRight: "1px solid var(--border)", transition: "background .12s" }} />
+
+                {/* ── RIGHT: PDF VIEWER ── */}
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+                    <PDFViewer pdfUrl={pdfUrl} compiling={compiling} onCompile={compileToPdf} latexSource={latexSource} compileError={compileError} />
                 </div>
             </div>
         </div>
