@@ -19,10 +19,13 @@ import queue
 import requests
 from flask import Flask, jsonify, request, Response, stream_with_context, send_file
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
+from models import db
+from auth import auth_bp
 from rag_graph import crag_retrieve
 from metall_report_graph import generate_report, METALL_SECTION_KEYWORDS
 
@@ -52,6 +55,25 @@ warnings.filterwarnings("ignore")
 
 app  = Flask(__name__)
 CORS(app)
+
+# ──────────────────────────────────────────────────────────────
+# Database & JWT Setup
+# ──────────────────────────────────────────────────────────────
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ragbot.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-in-production')
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 86400  # 24 hours
+
+db.init_app(app)
+jwt = JWTManager(app)
+
+# Register auth blueprint
+app.register_blueprint(auth_bp)
+
+# Create database tables
+with app.app_context():
+    db.create_all()
+    print("[INIT] Database initialized.")
 
 OLLAMA_HOST  = os.getenv("OLLAMA_HOST",  "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b")

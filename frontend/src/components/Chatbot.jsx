@@ -10,7 +10,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
     Send, Paperclip, FileText, ChevronDown,
     Upload, X, FileUp, CheckCircle, Loader2,
-    ArrowDown, Plus, RefreshCw, Clock, FileSearch, Trash2, Sun, Moon,
+    ArrowDown, Plus, RefreshCw, Clock, FileSearch, Trash2, Sun, Moon, LogOut,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -21,6 +21,7 @@ import "katex/dist/katex.min.css";
 import { useNavigate } from "react-router-dom";
 import { useApp, API } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 
 /* ─── Upload Zone ─────────────────────────────────────────────── */
 const UploadZone = ({ onUpload, uploading, uploadProgress }) => {
@@ -245,6 +246,46 @@ const ThemeToggle = () => {
     );
 };
 
+/* ─── User Menu ──────────────────────────────────────────────── */
+const UserMenu = () => {
+    const { user, logout } = useAuth();
+    const navigate = useNavigate();
+    const [showMenu, setShowMenu] = useState(false);
+
+    const handleLogout = async () => {
+        await logout();
+        navigate("/auth/login");
+    };
+
+    return (
+        <div className="relative">
+            <button
+                onClick={() => setShowMenu(!showMenu)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-transparent border border-[var(--border-mid)] text-[var(--text-muted)] text-[11px] font-mono cursor-pointer transition-all hover:bg-[var(--bg-elevated)] hover:text-[var(--text-body)]"
+                title={user?.username || "User"}
+            >
+                <div className="w-3 h-3 rounded-full bg-[var(--accent)] flex-shrink-0" />
+                {user?.username}
+            </button>
+            {showMenu && (
+                <div className="absolute right-0 top-full mt-1 w-40 bg-[var(--bg-panel)] border border-[var(--border-mid)] rounded-lg shadow-lg z-50 overflow-hidden">
+                    <div className="px-3 py-2.5 border-b border-[var(--border-mid)]">
+                        <p className="text-[10.5px] text-[var(--text-faint)] font-mono tracking-widest uppercase">Logged in</p>
+                        <p className="text-xs text-[var(--text-primary)] font-mono truncate mt-0.5">{user?.email}</p>
+                    </div>
+                    <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-base)] hover:text-[var(--text-primary)] transition-colors border-none bg-transparent cursor-pointer font-mono"
+                    >
+                        <LogOut size={12} />
+                        Logout
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
+
 /* ─── Main Chatbot ───────────────────────────────────────────── */
 const Chatbot = () => {
     const navigate = useNavigate();
@@ -372,6 +413,7 @@ const Chatbot = () => {
 
                     <div className="flex items-center gap-1.5">
                         <ThemeToggle />
+                        <UserMenu />
                         <button onClick={resetChat} className="flex items-center gap-1 bg-transparent border border-[var(--border-mid)] text-[var(--text-muted)] px-3 py-1.5 rounded-md text-[11.5px] cursor-pointer font-mono transition-all hover:bg-[var(--bg-elevated)] hover:text-[var(--text-body)]">
                             <Plus size={11} />New chat
                         </button>
