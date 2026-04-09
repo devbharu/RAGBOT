@@ -741,7 +741,7 @@ export default function ReportPanel() {
                 {/* Brand */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginRight: 18 }}>
                     <span style={{ fontSize: 17, color: "var(--accent)", display: "inline-block", animation: loading ? "pulse 2s ease-in-out infinite" : "none" }}>◈</span>
-                    <span style={{ fontFamily: "'Fraunces',Georgia,serif", fontStyle: "italic", fontSize: 14, color: "var(--text-primary)", letterSpacing: "-0.01em" }}>MetaLaTeX</span>
+                    <span style={{ fontSize: 17, color: "var(--accent)", fontWeight: 600 }}>CMTI</span>
                 </div>
 
                 {["File", "Edit", "Insert", "Format", "View", "Help"].map(m => (
