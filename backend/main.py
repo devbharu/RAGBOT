@@ -54,7 +54,7 @@ os.environ["TRANSFORMERS_OFFLINE"]   = "1"
 warnings.filterwarnings("ignore")
 
 app  = Flask(__name__)
-CORS(app)
+CORS(app, supports_credentials=True, expose_headers=['Content-Type'], allow_headers=['Content-Type', 'Authorization'])
 
 # ──────────────────────────────────────────────────────────────
 # Database & JWT Setup
@@ -63,9 +63,36 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ragbot.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-in-production')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 86400  # 24 hours
+app.config['JWT_ALGORITHM'] = 'HS256'  # Explicitly set algorithm
+app.config['JWT_TOKEN_LOCATION'] = ['headers']  # Only accept tokens in headers
+app.config['JWT_HEADER_NAME'] = 'Authorization'  # Standard header name
+app.config['JWT_HEADER_TYPE'] = 'Bearer'  # Standard "Bearer" prefix
 
 db.init_app(app)
 jwt = JWTManager(app)
+
+# ──────────────────────────────────────────────────────────────
+# JWT Error Handlers (CRITICAL FOR 422 FIX)
+# ──────────────────────────────────────────────────────────────
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_data):
+    print(f"[JWT ERROR] Token expired")
+    return jsonify({'error': 'Token has expired'}), 401
+
+@jwt.invalid_token_loader
+def invalid_token_callback(error):
+    print(f"[JWT ERROR] Invalid token: {error}")
+    return jsonify({'error': f'Invalid token: {error}'}), 401
+
+@jwt.unauthorized_loader
+def missing_token_callback(error):
+    print(f"[JWT ERROR] Missing token: {error}")
+    return jsonify({'error': f'Missing authorization token: {error}'}), 401
+
+@jwt.token_verification_failed_loader
+def token_verification_failed_callback(jwt_header, jwt_data):
+    print(f"[JWT ERROR] Token verification failed")
+    return jsonify({'error': 'Token verification failed'}), 401
 
 # Register auth blueprint
 app.register_blueprint(auth_bp)

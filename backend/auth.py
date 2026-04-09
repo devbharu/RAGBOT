@@ -2,7 +2,7 @@
 auth.py — Authentication routes (signup, login, logout, current user)
 """
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from models import db, User
 from datetime import timedelta
@@ -12,6 +12,19 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 # Config — adjust based on your needs
 ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
 REFRESH_TOKEN_EXPIRES = timedelta(days=30)
+
+# ─────────────────────────────────────────────────────────────
+# CORS Preflight Handler
+# ─────────────────────────────────────────────────────────────
+@auth_bp.before_request
+def handle_preflight():
+    """Handle CORS preflight requests"""
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS")
+        return response
 
 # ─────────────────────────────────────────────────────────────
 # POST /auth/signup
@@ -62,13 +75,13 @@ def signup():
         db.session.add(user)
         db.session.commit()
         
-        # Generate tokens
+        # Generate tokens (identity MUST be string)
         access_token = create_access_token(
-            identity=user.id,
+            identity=str(user.id),
             expires_delta=ACCESS_TOKEN_EXPIRES
         )
         refresh_token = create_refresh_token(
-            identity=user.id,
+            identity=str(user.id),
             expires_delta=REFRESH_TOKEN_EXPIRES
         )
         
@@ -128,13 +141,13 @@ def login():
         if not user.check_password(password):
             return jsonify({'error': 'Invalid credentials'}), 401
         
-        # Generate tokens
+        # Generate tokens (identity MUST be string)
         access_token = create_access_token(
-            identity=user.id,
+            identity=str(user.id),
             expires_delta=ACCESS_TOKEN_EXPIRES
         )
         refresh_token = create_refresh_token(
-            identity=user.id,
+            identity=str(user.id),
             expires_delta=REFRESH_TOKEN_EXPIRES
         )
         
@@ -162,14 +175,14 @@ def refresh():
     Authorization: Bearer <refresh_token>
     """
     try:
-        user_id = get_jwt_identity()
-        user = User.query.get(user_id)
+        user_id = get_jwt_identity()  # This is now a string
+        user = User.query.get(int(user_id))  # Convert back to int for DB query
         
         if not user:
             return jsonify({'error': 'User not found'}), 404
         
         access_token = create_access_token(
-            identity=user.id,
+            identity=str(user.id),  # Convert to string for JWT
             expires_delta=ACCESS_TOKEN_EXPIRES
         )
         
@@ -184,8 +197,8 @@ def refresh():
 # ─────────────────────────────────────────────────────────────
 # GET /auth/me
 # ─────────────────────────────────────────────────────────────
-@auth_bp.route('/me', methods=['GET'])
-@jwt_required()
+@auth_bp.route('/me', methods=['GET', 'OPTIONS'])
+@jwt_required(optional=False)
 def get_current_user():
     """
     Get current authenticated user info
@@ -194,17 +207,25 @@ def get_current_user():
     Authorization: Bearer <access_token>
     """
     try:
-        user_id = get_jwt_identity()
-        user = User.query.get(user_id)
+        user_id = get_jwt_identity()  # This is now a string
+        
+        if not user_id:
+            print(f"[AUTH] get_jwt_identity() returned: {user_id}")
+            return jsonify({'error': 'Invalid token: no user identity'}), 401
+        
+        user = User.query.get(int(user_id))  # Convert back to int for DB query
         
         if not user:
+            print(f"[AUTH] User not found for id: {user_id}")
             return jsonify({'error': 'User not found'}), 404
         
+        print(f"[AUTH] ✓ /auth/me validated for user: {user.username}")
         return jsonify({
             'user': user.to_dict(),
         }), 200
     
     except Exception as e:
+        print(f"[AUTH] ✗ /auth/me error: {str(e)}")
         return jsonify({'error': f'Failed to get user: {str(e)}'}), 500
 
 
