@@ -17,7 +17,7 @@ from typing import Generator
 import queue
 
 import requests
-from flask import Flask, jsonify, request, Response, stream_with_context, send_file
+from flask import Flask, jsonify, request, Response, stream_with_context, send_file, make_response
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
@@ -367,12 +367,28 @@ def search_file(filename: str, query: str, k: int = RETRIEVAL_K) -> list[dict]:
 
 
 def list_indexed_files():
+    """List all indexed files by reading original filenames from collection metadata."""
     collections = chroma_client.list_collections()
-    return [
-        col.name.replace("file_", "", 1)
-        for col in collections
-        if col.name.startswith("file_")
-    ]
+    files = []
+    
+    for col in collections:
+        if not col.name.startswith("file_"):
+            continue
+        
+        try:
+            # Get first document to extract original filename from metadata
+            results = col.get(limit=1)
+            if results and results.get("metadatas") and len(results["metadatas"]) > 0:
+                original_filename = results["metadatas"][0].get("source", col.name.replace("file_", "", 1))
+                files.append(original_filename)
+            else:
+                # Fallback: use collection name if no metadata found
+                files.append(col.name.replace("file_", "", 1))
+        except Exception as e:
+            print(f"[WARN] Error reading metadata from {col.name}: {e}")
+            files.append(col.name.replace("file_", "", 1))
+    
+    return files
 
 
 # ──────────────────────────────────────────────────────────────
@@ -943,8 +959,12 @@ def add_cors(response):
 @app.route("/file/<path:filename>", methods=["GET", "OPTIONS"])
 def serve_file(filename):
     if request.method == "OPTIONS":
-        # Preflight
+        # Preflight — return with proper CORS headers
         resp = make_response("", 204)
+        resp.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+        resp.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        resp.headers["Access-Control-Max-Age"] = "3600"
         return resp
  
     try:
@@ -966,12 +986,21 @@ def serve_file(filename):
         }
         mimetype = mime_map.get(ext, "application/octet-stream")
  
-        return send_file(
+        response = send_file(
             file_path,
             mimetype=mimetype,
             as_attachment=False,        # inline, not download
             conditional=True,           # supports range requests (PDF page seek)
         )
+        
+        # Add CORS headers explicitly to file response
+        response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Cache-Control"] = "public, max-age=3600"
+        
+        return response
  
     except Exception as e:
         return jsonify({"error": str(e)}), 500

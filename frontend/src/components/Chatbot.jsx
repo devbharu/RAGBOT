@@ -10,7 +10,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
     Send, Paperclip, FileText, ChevronDown,
     Upload, X, FileUp, CheckCircle, Loader2,
-    ArrowDown, Plus, RefreshCw, Clock, FileSearch, Trash2, Sun, Moon, LogOut,
+    ArrowDown, Plus, RefreshCw, Clock, FileSearch, Trash2, Sun, Moon, LogOut, Share2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -97,23 +97,129 @@ const UploadPanel = ({ onClose }) => {
     );
 };
 
-/* ─── PDF Viewer Panel ───────────────────────────────────────── */
+/* ─── Document Viewer Panel (Enhanced UX) ───────────────────────*/
 const PdfViewerPanel = ({ filename, onClose }) => {
     const { getFileUrl } = useApp();
-    const pdfUrl = filename?.toLowerCase().endsWith(".pdf") ? getFileUrl(filename) : null;
+    const [fileError, setFileError] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const isPdf = filename?.toLowerCase().endsWith(".pdf");
+    const isTxt = filename?.toLowerCase().endsWith(".txt");
+    const isSupported = isPdf || isTxt;
+    const fileUrl = isSupported ? getFileUrl(filename) : null;
+
+    // Get file type label
+    const fileType = isPdf ? "PDF" : isTxt ? "Text" : "Document";
+
     return (
-        <div className="flex flex-col h-full bg-[var(--bg-base)]">
-            <div className="flex items-center justify-between px-4 h-11 flex-shrink-0 border-b border-[var(--border)] bg-[var(--bg-panel)]">
-                <div className="flex items-center gap-2">
-                    <FileSearch size={13} className="text-[var(--accent)]" />
-                    <span className="text-xs text-[var(--text-body)] font-mono truncate max-w-[260px]">{filename || "No file selected"}</span>
+        <div className="flex flex-col h-full bg-[var(--bg-base)] rounded-2xl overflow-hidden border border-[var(--border-mid)] shadow-lg">
+            {/* Premium Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 flex-shrink-0 border-b border-[var(--border-mid)] bg-gradient-to-r from-[var(--bg-panel)] to-[var(--bg-base)]">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-10 h-10 rounded-lg bg-[var(--accent-dim)] flex items-center justify-center flex-shrink-0">
+                        <FileSearch size={16} className="text-[var(--accent)]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-[10px] text-[var(--text-faint)] font-mono tracking-wide uppercase mb-0.5">Document</p>
+                        <p className="text-xs text-[var(--text-primary)] font-semibold truncate" title={filename}>{filename || "No file selected"}</p>
+                    </div>
                 </div>
-                <button onClick={onClose} className="p-1.5 rounded bg-transparent border border-[var(--border)] cursor-pointer text-[var(--text-muted)] flex hover:text-[var(--text-primary)] transition-all"><X size={12} /></button>
+                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                    {fileError && fileUrl && (
+                        <a href={fileUrl} target="_blank" rel="noopener noreferrer" title="Open in new tab" className="p-2 rounded-lg bg-[var(--accent-dim)] border border-[var(--border)] cursor-pointer text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white transition-all duration-200">
+                            <Share2 size={14} />
+                        </a>
+                    )}
+                    {fileUrl && (
+                        <a href={fileUrl} download title="Download" className="p-2 rounded-lg bg-transparent border border-[var(--border)] cursor-pointer text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--accent)] transition-all duration-200">
+                            <Upload size={14} />
+                        </a>
+                    )}
+                    <button onClick={onClose} title="Close (Esc)" className="p-2 rounded-lg bg-transparent border border-[var(--border)] cursor-pointer text-[var(--text-faint)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] transition-all duration-200">
+                        <X size={14} />
+                    </button>
+                </div>
             </div>
-            <div className="flex-1 overflow-hidden">
-                {pdfUrl
-                    ? <iframe src={pdfUrl} title="PDF Viewer" className="w-full h-full border-none bg-white" />
-                    : <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--text-faint)] font-mono"><FileSearch size={24} className="opacity-30" /><p className="text-xs">{filename ? "PDF preview not available for .txt" : "No file selected"}</p></div>}
+
+            {/* Enhanced Viewer */}
+            <div className="flex-1 overflow-hidden relative bg-white flex flex-col">
+                {/* Loading State - Enhanced */}
+                {loading && fileUrl && !fileError && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-white via-white to-[var(--bg-base)] z-20 backdrop-blur-xs">
+                        <div className="flex flex-col items-center gap-3">
+                            <div className="relative w-14 h-14">
+                                <Loader2 size={56} className="text-[var(--accent)] animate-spin absolute inset-0" />
+                                <div className="absolute inset-2 rounded-full bg-[var(--accent-dim)]" />
+                            </div>
+                            <div className="text-center">
+                                <p className="text-sm font-semibold text-[var(--text-primary)]">Loading {fileType}</p>
+                                <p className="text-[11px] text-[var(--text-faint)] mt-1">Please wait…</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* iFrame Viewer */}
+                {fileUrl && !fileError && (
+                    <iframe
+                        src={fileUrl}
+                        title="File Viewer"
+                        className="w-full h-full border-none flex-1 bg-white"
+                        onLoad={() => setLoading(false)}
+                        onError={() => {
+                            setLoading(false);
+                            setFileError(true);
+                        }}
+                        allow="fullscreen"
+                    />
+                )}
+
+                {/* Empty/Error State - Redesigned */}
+                {(!fileUrl || fileError) && (
+                    <div className="flex-1 flex flex-col items-center justify-center gap-6 px-8 py-12 bg-gradient-to-br from-[var(--bg-elevated)] via-[var(--bg-base)] to-[var(--bg-panel)]">
+                        <div className="relative">
+                            <div className="absolute inset-0 bg-[var(--accent-dim)] rounded-2xl blur-xl opacity-30" />
+                            <div className="relative w-20 h-20 rounded-2xl bg-[var(--bg-panel)] border-2 border-[var(--border-mid)] flex items-center justify-center">
+                                <FileSearch size={40} className="text-[var(--accent)] opacity-60" />
+                            </div>
+                        </div>
+
+                        <div className="text-center max-w-sm">
+                            <h3 className="text-sm font-bold text-[var(--text-primary)] mb-2">
+                                {!filename
+                                    ? "No Document Selected"
+                                    : !isSupported
+                                        ? "File Not Supported"
+                                        : "Unable to Load"}
+                            </h3>
+                            <p className="text-xs text-[var(--text-faint)] leading-relaxed mb-4">
+                                {fileError
+                                    ? "We couldn't load this file. This might be a temporary issue."
+                                    : !filename
+                                        ? "Select a PDF or TXT file from the documents list to preview it here."
+                                        : "Only PDF and TXT files can be previewed. Other formats can still be downloaded."}
+                            </p>
+
+                            {/* Action Buttons */}
+                            <div className="flex flex-col gap-2 mt-5">
+                                {fileError && fileUrl && (
+                                    <>
+                                        <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[var(--accent)] text-white text-xs font-semibold rounded-lg hover:bg-[var(--accent-hover)] transition-all duration-200">
+                                            <Share2 size={13} />
+                                            Open in New Tab
+                                        </a>
+                                        <a href={fileUrl} download className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[var(--bg-elevated)] text-[var(--accent)] text-xs font-semibold rounded-lg border border-[var(--border-mid)] hover:bg-[var(--bg-panel)] transition-all duration-200">
+                                            <Upload size={13} />
+                                            Download File
+                                        </a>
+                                    </>
+                                )}
+                                {!filename && (
+                                    <p className="text-[10px] text-[var(--text-faint)] mt-2 italic">💡 Tip: Select a document from the list on the left</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -544,19 +650,10 @@ const Chatbot = () => {
                         </div>
                     </div>
 
-                    {/* Right PDF panel */}
-                    {panelOpen && (
-                        <div className="flex-[0_0_50%] min-w-0 overflow-hidden flex flex-col animate-[fadeIn_0.2s_ease] bg-[var(--bg-base)]">
-                            <div className="flex items-center gap-1 px-3.5 h-11 flex-shrink-0 border-b border-[var(--border)] bg-[var(--bg-panel)]">
-                                <button onClick={() => setActivePanel("pdf")} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11.5px] cursor-pointer font-mono transition-all ${activePanel === "pdf" ? "bg-[var(--accent-dim)] border border-[var(--accent)]/35 text-[var(--accent)]" : "bg-transparent border border-transparent text-[var(--text-muted)]"}`}>
-                                    <FileSearch size={11} />PDF Viewer
-                                </button>
-                                <div className="flex-1" />
-                                <button onClick={() => setActivePanel(null)} className="p-1.5 rounded bg-transparent border border-[var(--border)] cursor-pointer text-[var(--text-faint)] flex hover:text-[var(--text-body)] transition-all"><X size={12} /></button>
-                            </div>
-                            <div className="flex-1 overflow-hidden">
-                                {activePanel === "pdf" && <PdfViewerPanel filename={selectedFile} onClose={() => setActivePanel(null)} />}
-                            </div>
+                    {/* Right Document Panel */}
+                    {panelOpen && activePanel === "pdf" && (
+                        <div className="flex-[0_0_50%] min-w-0 overflow-hidden flex flex-col animate-[fadeIn_0.2s_ease] bg-[var(--bg-base)] p-2">
+                            <PdfViewerPanel filename={selectedFile} onClose={() => setActivePanel(null)} />
                         </div>
                     )}
                 </div>
