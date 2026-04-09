@@ -69,16 +69,20 @@ os.makedirs(DOCS_DIR,   exist_ok=True)
 
 
 # ──────────────────────────────────────────────────────────────
-# 2. ChromaDB + Embedding Setup
+# 2. ChromaDB + Embedding Setup (LAZY LOADED)
 # ──────────────────────────────────────────────────────────────
-print(f"[INIT] Loading embedding model: {EMBED_MODEL} ...")
-
-embedding_fn = SentenceTransformerEmbeddingFunction(
-    model_name           = EMBED_MODEL,
-    normalize_embeddings = True,
-)
-
+embedding_fn: "SentenceTransformerEmbeddingFunction | None" = None
 chroma_client = chromadb.PersistentClient(path=CHROMA_DIR)
+
+def _get_embedding_fn() -> "SentenceTransformerEmbeddingFunction":
+    global embedding_fn
+    if embedding_fn is None:
+        print(f"[INIT] Loading embedding model: {EMBED_MODEL} ...")
+        embedding_fn = SentenceTransformerEmbeddingFunction(
+            model_name           = EMBED_MODEL,
+            normalize_embeddings = True,
+        )
+    return embedding_fn
 
 _reranker: "CrossEncoder | None" = None
 
@@ -117,7 +121,7 @@ def _collection_name(filename: str) -> str:
 def _get_collection(filename: str):
     return chroma_client.get_or_create_collection(
         name               = _collection_name(filename),
-        embedding_function = embedding_fn,
+        embedding_function = _get_embedding_fn(),
         metadata           = {"hnsw:space": "cosine"},
     )
 
