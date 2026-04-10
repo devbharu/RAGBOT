@@ -1,0 +1,94 @@
+# Environment Variables
+.env
+.env.local
+.env.*.local
+.env.example
+
+# Virtual Environments
+venv/
+env/
+.venv
+ENV/
+env.bak/
+venv.bak/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Build artifacts
+dist/
+dist-ssr/
+*.local
+build/
+*.egg-info/
+*.dist-info/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+*.sublime-workspace
+*.sublime-project
+.project
+.pydevproject
+.settings/
+
+# Runtime
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# OS
+*.o
+*.a
+*.so
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE temporary files
+*.iml
+*.iws
+*.ipr
+
+# macOS
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.fseventsd/
+
+# Windows
+$RECYCLE.BIN/
+ehthumbs.db
+.

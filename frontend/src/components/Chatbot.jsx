@@ -395,7 +395,7 @@ const UserMenu = () => {
 /* ─── Main Chatbot ───────────────────────────────────────────── */
 const Chatbot = () => {
     const navigate = useNavigate();
-    const { files, selectedFile, setSelectedFile, uploading, uploadProgress, handleUploadFile, handleDeleteFile, handleReindex, messages, setMessages, resetChat } = useApp();
+    const { files, selectedFile, setSelectedFile, uploading, uploadProgress, handleUploadFile, handleDeleteFile, handleReindex, messages, setMessages, resetChat, addChatToHistory, activeChat } = useApp();
 
     const [inputValue, setInputValue] = useState("");
     const [isTyping, setIsTyping] = useState(false);
@@ -417,6 +417,19 @@ const Chatbot = () => {
     useEffect(() => { if (!userScrolled) scrollToBottom("smooth"); }, [messages, userScrolled, scrollToBottom]);
     useEffect(() => { if (isTyping && isAtBottomRef.current) scrollToBottom("auto"); }, [messages, isTyping, scrollToBottom]);
     useEffect(() => { if (textareaRef.current) { textareaRef.current.style.height = "auto"; textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`; } }, [inputValue]);
+
+    // ── Auto-save chat to history ────────────────────────────────
+    useEffect(() => {
+        // Only auto-save if we have messages beyond the initial bot message
+        if (messages.length > 1 && !activeChat) {
+            // Find first user message to use as title
+            const firstUserMsg = messages.find(msg => msg.type === "user");
+            if (firstUserMsg) {
+                const title = firstUserMsg.content.substring(0, 50);
+                addChatToHistory(title);
+            }
+        }
+    }, [messages.length, activeChat, messages, addChatToHistory]);
 
     const handleSend = async (overrideText) => {
         const text = overrideText || inputValue;

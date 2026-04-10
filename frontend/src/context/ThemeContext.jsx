@@ -85,3 +85,6 @@ export const useTheme = () => {
     if (!ctx) throw new Error("useTheme must be used inside ThemeProvider");
     return ctx;
 };
+
+// Export the context itself for direct use if needed
+export { ThemeContext };

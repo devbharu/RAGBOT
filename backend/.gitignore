@@ -1,9 +1,70 @@
 
-venv
+# Environment
 .env
-chroma_db
-rag_docs
-uploads
-__pycache__
-docling_loader.cpython-312.pyc
-page_images
+.env.local
+.env.example
+
+# Virtual Environment
+venv/
+env/
+.venv/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+.tox/
+.nox/
+.hypothesis/
+
+# Data & Cache (application-specific)
+chroma_db/
+rag_docs/
+uploads/
+page_images/
+instance/
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Logs
+logs/
+*.log

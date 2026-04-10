@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { Menu, X, Settings, Moon, Sun, MessageSquare, Trash2 } from 'lucide-react';
+import React from 'react';
+import { Sun, Moon, MessageSquare } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 
 const Header = () => {
-    const [isDark, setIsDark] = useState(true);
-    const [showMenu, setShowMenu] = useState(false);
+    const { isDark, toggleTheme } = useTheme();
 
     return (
-        <header className="bg-[#1a1a1a] border-b border-[#2a2a2a] sticky top-0 z-50 backdrop-blur-sm">
+        <header className="bg-white dark:bg-[#1a1a1a] border-b border-gray-200 dark:border-[#2a2a2a] sticky top-0 z-40 backdrop-blur-sm">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-between h-16">
                     {/* Left - Logo/Brand */}
@@ -18,7 +18,7 @@ const Header = () => {
                             <h1 className="text-xl font-bold bg-gradient-to-r from-[#FF8081] to-[#ffb3b4] bg-clip-text text-transparent tracking-tight">
                                 CMTI Bot
                             </h1>
-                            <p className="text-xs text-gray-400 hidden sm:block">AI Assistant</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">AI Assistant</p>
                         </div>
                     </div>
 
@@ -30,25 +30,16 @@ const Header = () => {
                             <span>New Chat</span>
                         </button>
 
-                        {/* Clear Chat Button */}
-
-
                         {/* Theme Toggle */}
                         <button
-                            onClick={() => setIsDark(!isDark)}
-                            className="p-2 text-gray-400 hover:text-white hover:bg-[#2a2a2a] rounded-lg transition-all duration-200"
+                            onClick={toggleTheme}
+                            className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2a2a2a] rounded-lg transition-all duration-200"
                             title="Toggle theme"
                         >
                             {isDark ? <Sun size={20} /> : <Moon size={20} />}
                         </button>
-
-
-
-
                     </div>
                 </div>
-
-
             </div>
         </header>
     );

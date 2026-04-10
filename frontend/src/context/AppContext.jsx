@@ -21,6 +21,17 @@ export const useApp = () => {
 
 // ─── Provider ──────────────────────────────────────────────────
 export function AppProvider({ children }) {
+    // ── Sidebar state ───────────────────────────────────────────
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+
+    // ── Chat history state ──────────────────────────────────────
+    const [chatHistory, setChatHistory] = useState(() => {
+        // Load from localStorage on mount
+        const stored = localStorage.getItem("chatHistory");
+        return stored ? JSON.parse(stored) : [];
+    });
+    const [activeChat, setActiveChat] = useState(null);
+
     // ── File state ──────────────────────────────────────────────
     const [files, setFiles] = useState([]);
     const [selectedFile, setSelectedFile] = useState("");
@@ -222,6 +233,57 @@ export function AppProvider({ children }) {
         ]);
     }, []);
 
+    // ── Chat history management ─────────────────────────────────
+    const startNewChat = useCallback(() => {
+        resetChat();
+        setActiveChat(null);
+        setSidebarOpen(false);
+    }, [resetChat]);
+
+    const addChatToHistory = useCallback((title) => {
+        if (!title || title.trim() === "") return;
+        
+        const newChat = {
+            id: Date.now(),
+            title: title.substring(0, 50), // Limit title length
+            messages: messages,
+            createdAt: new Date().toISOString(),
+        };
+
+        const updated = [newChat, ...chatHistory];
+        setChatHistory(updated);
+        setActiveChat(newChat.id);
+        
+        // Persist to localStorage
+        localStorage.setItem("chatHistory", JSON.stringify(updated));
+        
+        return newChat.id;
+    }, [chatHistory, messages]);
+
+    const loadChat = useCallback((chatId) => {
+        const chat = chatHistory.find((c) => c.id === chatId);
+        if (chat) {
+            setMessages(chat.messages);
+            setActiveChat(chatId);
+        }
+    }, [chatHistory]);
+
+    const deleteChat = useCallback((chatId) => {
+        const updated = chatHistory.filter((c) => c.id !== chatId);
+        setChatHistory(updated);
+        localStorage.setItem("chatHistory", JSON.stringify(updated));
+        
+        if (activeChat === chatId) {
+            if (updated.length > 0) {
+                loadChat(updated[0].id);
+            } else {
+                startNewChat();
+            }
+        }
+    }, [chatHistory, activeChat, loadChat, startNewChat]);
+
+    // ── Reset chat ──────────────────────────────────────────────
+
     // ── PDF URL helper ──────────────────────────────────────────
     // Constructs the URL to serve a file from the Flask /file/<path:filename> endpoint.
     // Flask's <path:filename> route accepts raw slashes/spaces — we only encode
@@ -240,6 +302,19 @@ export function AppProvider({ children }) {
 
     // ─── Context value ──────────────────────────────────────────
     const value = {
+        // Sidebar
+        sidebarOpen,
+        setSidebarOpen,
+
+        // Chat history
+        chatHistory,
+        activeChat,
+        setActiveChat,
+        startNewChat,
+        addChatToHistory,
+        loadChat,
+        deleteChat,
+
         // Files
         files,
         setFiles,
@@ -258,7 +333,7 @@ export function AppProvider({ children }) {
         setMessages,
         resetChat,
 
-        // Report  ← these were missing from value, causing the TypeError
+        // Report
         reportLatex,
         setReportLatex,
         reportSections,
