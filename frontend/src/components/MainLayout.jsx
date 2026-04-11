@@ -1,6 +1,7 @@
 /**
- * MainLayout.jsx — Layout wrapper with collapsible Sidebar
- * Components (Chatbot, ReportPanel) render their own headers
+ * MainLayout.jsx — CMTI v8.0
+ * Sidebar + main content shell.
+ * Colors come entirely from ThemeContext CSS vars — zero hardcoded values.
  */
 
 import React from 'react';
@@ -8,12 +9,25 @@ import Sidebar from './Sidebar';
 
 export default function MainLayout({ children }) {
     return (
-        <div className="flex h-screen bg-white dark:bg-gray-950">
-            {/* Sidebar - Always visible, toggles between icon/full view */}
+        <div
+            style={{
+                display: 'flex',
+                height: '100vh',
+                overflow: 'hidden',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-body)',
+            }}
+        >
             <Sidebar />
-
-            {/* Main Content - rendered by child (Chatbot, ReportPanel, etc.) */}
-            <main className="flex-1 flex flex-col overflow-hidden">
+            <main
+                style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    minWidth: 0, /* prevent flex blowout */
+                }}
+            >
                 {children}
             </main>
         </div>

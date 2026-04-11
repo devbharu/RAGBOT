@@ -305,7 +305,7 @@ def _do_index(filepath: str, filename: str, force: bool = False) -> None:
         return
 
     col_name   = _collection_name(filename)
-    batch_size = 100
+    batch_size = 1000
 
     for i in range(0, len(chunks), batch_size):
         batch = chunks[i: i + batch_size]

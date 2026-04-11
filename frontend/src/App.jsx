@@ -1,3 +1,7 @@
+/**
+ * App.jsx — CMTI v8.0
+ * ReportPanel is full-screen (no sidebar), Chatbot uses MainLayout
+ */
 
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
@@ -10,7 +14,6 @@ import ReportPanel from "./components/ReportPanel";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 
-
 export default function App() {
   return (
     <ThemeProvider>
@@ -18,11 +21,11 @@ export default function App() {
         <AppProvider>
           <BrowserRouter>
             <Routes>
-              {/* Auth Routes */}
+              {/* Auth */}
               <Route path="/auth/login" element={<Login />} />
               <Route path="/auth/signup" element={<Signup />} />
 
-              {/* Protected Routes with MainLayout */}
+              {/* Chat — uses sidebar layout */}
               <Route
                 path="/"
                 element={
@@ -33,18 +36,17 @@ export default function App() {
                   </PrivateRoute>
                 }
               />
+
+              {/* Report — full-screen editor, no sidebar */}
               <Route
                 path="/report"
                 element={
                   <PrivateRoute>
-                    <MainLayout>
-                      <ReportPanel />
-                    </MainLayout>
+                    <ReportPanel />
                   </PrivateRoute>
                 }
               />
 
-              {/* Catch-all */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </BrowserRouter>
