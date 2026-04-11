@@ -525,7 +525,7 @@ const Chatbot = () => {
                 {modalCard && <PasteModal card={modalCard} onClose={closeModal} />}
 
                 {/* ── Top Bar — UserMenu removed (lives in Sidebar) ── */}
-                <header className="flex-shrink-0 flex items-center justify-between px-5 h-[52px] border-b border-[var(--border)] sticky top-0 z-[100]" style={{ backgroundColor: "var(--bg-panel)" }}>
+                <header className="flex-shrink-0 flex items-center justify-between px-5 h-[52px]   sticky top-0 z-[100]" style={{ backgroundColor: "var(--bg-surface)" }}>
                     <div className="flex items-center gap-2.5">
                         <div className="w-7 h-7 rounded-lg bg-[var(--accent-dim)] border border-[var(--accent)]/25 flex items-center justify-center">
                             <span className="text-[var(--accent)] text-sm leading-none">◈</span>
