@@ -24,12 +24,6 @@ const Header = () => {
 
                     {/* Right - Actions */}
                     <div className="flex items-center gap-2">
-                        {/* New Chat Button - Desktop */}
-                        <button className="hidden md:flex items-center gap-2 px-4 py-2 bg-[#FF8081] hover:bg-[#ff6b6c] text-white text-sm font-medium rounded-lg transition-all duration-200 shadow-lg shadow-[#FF8081]/30">
-                            <MessageSquare size={16} />
-                            <span>New Chat</span>
-                        </button>
-
                         {/* Theme Toggle */}
                         <button
                             onClick={toggleTheme}

@@ -22,7 +22,7 @@ export const useApp = () => {
 // ─── Provider ──────────────────────────────────────────────────
 export function AppProvider({ children }) {
     // ── Sidebar state ───────────────────────────────────────────
-    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(true);
 
     // ── Chat history state ──────────────────────────────────────
     const [chatHistory, setChatHistory] = useState(() => {

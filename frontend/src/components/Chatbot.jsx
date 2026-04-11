@@ -368,10 +368,9 @@ const UserMenu = () => {
             <button
                 onClick={() => setShowMenu(!showMenu)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-transparent border border-[var(--border-mid)] text-[var(--text-muted)] text-[11px] font-mono cursor-pointer transition-all hover:bg-[var(--bg-elevated)] hover:text-[var(--text-body)]"
-                title={user?.username || "User"}
+                title="Profile"
             >
                 <div className="w-3 h-3 rounded-full bg-[var(--accent)] flex-shrink-0" />
-                {user?.username}
             </button>
             {showMenu && (
                 <div className="absolute right-0 top-full mt-1 w-40 bg-[var(--bg-panel)] border border-[var(--border-mid)] rounded-lg shadow-lg z-50 overflow-hidden">
@@ -533,9 +532,6 @@ const Chatbot = () => {
                     <div className="flex items-center gap-1.5">
                         <ThemeToggle />
                         <UserMenu />
-                        <button onClick={resetChat} className="flex items-center gap-1 bg-transparent border border-[var(--border-mid)] text-[var(--text-muted)] px-3 py-1.5 rounded-md text-[11.5px] cursor-pointer font-mono transition-all hover:bg-[var(--bg-elevated)] hover:text-[var(--text-body)]">
-                            <Plus size={11} />New chat
-                        </button>
                         {selectedFile && (
                             <>
                                 <PanelTabBtn active={activePanel === "pdf"} onClick={() => togglePanel("pdf")}>
