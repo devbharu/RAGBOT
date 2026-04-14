@@ -17,6 +17,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    chats = db.relationship('Chat', backref='user', lazy=True, cascade='all, delete-orphan')
     
     def set_password(self, password: str):
         """Hash and set the password"""
@@ -37,3 +38,46 @@ class User(db.Model):
     
     def __repr__(self):
         return f'<User {self.username}>'
+
+
+class Chat(db.Model):
+    __tablename__ = 'chats'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    title = db.Column(db.String(255), nullable=False, default='New Chat')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    messages = db.relationship('Message', backref='chat', lazy=True, cascade='all, delete-orphan')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'title': self.title,
+            'createdAt': self.created_at.isoformat(),
+        }
+
+    def __repr__(self):
+        return f'<Chat {self.id} user={self.user_id}>'
+
+
+class Message(db.Model):
+    __tablename__ = 'messages'
+
+    id = db.Column(db.Integer, primary_key=True)
+    chat_id = db.Column(db.Integer, db.ForeignKey('chats.id'), nullable=False, index=True)
+    role = db.Column(db.String(20), nullable=False, index=True)
+    content = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'chat_id': self.chat_id,
+            'role': self.role,
+            'content': self.content,
+            'timestamp': self.timestamp.isoformat(),
+        }
+
+    def __repr__(self):
+        return f'<Message {self.id} chat={self.chat_id} role={self.role}>'

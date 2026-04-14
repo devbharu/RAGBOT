@@ -2,6 +2,8 @@
  * ThemeContext.jsx — v7.0
  * Claude-like theme. Dark is genuinely readable. No gradients. Flat surfaces.
  */
+
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect } from "react";
 
 const ThemeContext = createContext(null);
@@ -13,7 +15,7 @@ export const ThemeProvider = ({ children }) => {
 
     const toggleTheme = () => setIsDark((d) => {
         const next = !d;
-        try { localStorage.setItem("cmti_theme", next ? "dark" : "light"); } catch { }
+        try { localStorage.setItem("cmti_theme", next ? "dark" : "light"); } catch { return next; }
         return next;
     });
 

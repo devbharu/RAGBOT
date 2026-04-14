@@ -8,12 +8,12 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, X, Plus, LogOut, MessageSquare, User, Settings, HelpCircle, Star } from 'lucide-react';
+import { Menu, X, Plus, LogOut, MessageSquare, User, Settings, HelpCircle, Star, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 
 export default function Sidebar() {
-    const { sidebarOpen, setSidebarOpen, chatHistory, activeChat, setActiveChat, startNewChat, loadChat } = useApp();
+    const { sidebarOpen, setSidebarOpen, chatHistory, activeChat, startNewChat, loadChat, deleteChat } = useApp();
     const { user, logout } = useAuth();
     const [modalOpen, setModalOpen] = useState(false);
     const modalRef = useRef(null);
@@ -22,6 +22,16 @@ export default function Sidebar() {
     const handleLogout = async () => {
         setModalOpen(false);
         await logout();
+    };
+
+    const handleDeleteChat = async (chatId, title) => {
+        const ok = window.confirm(`Delete chat "${title || "Untitled"}"?`);
+        if (!ok) return;
+        try {
+            await deleteChat(chatId);
+        } catch {
+            alert("Failed to delete chat. Please try again.");
+        }
     };
 
     useEffect(() => {
@@ -112,22 +122,38 @@ export default function Sidebar() {
                             chatHistory.map((chat) => {
                                 const isActive = activeChat === chat.id;
                                 return (
-                                    <button
+                                    <div
                                         key={chat.id}
-                                        onClick={() => { loadChat(chat.id); setActiveChat(chat.id); }}
-                                        className="w-full text-left px-3 py-2 rounded-xl font-mono text-[12px] flex items-center gap-2.5 overflow-hidden whitespace-nowrap transition-all cursor-pointer border-none mb-0.5"
-                                        style={{
-                                            backgroundColor: isActive ? "var(--accent-dim)" : "transparent",
-                                            color: isActive ? "var(--accent)" : "var(--text-muted)",
-                                        }}
-                                        title={chat.title}
+                                        className="group w-full px-1 py-0.5"
                                     >
-                                        <MessageSquare size={12} style={{ flexShrink: 0, opacity: 0.6 }} />
-                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{chat.title}</span>
-                                        {isActive && (
-                                            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--accent)" }} />
-                                        )}
-                                    </button>
+                                        <div
+                                            className="w-full rounded-xl font-mono text-[12px] flex items-center gap-1 overflow-hidden whitespace-nowrap transition-all"
+                                            style={{
+                                                backgroundColor: isActive ? "var(--accent-dim)" : "transparent",
+                                                color: isActive ? "var(--accent)" : "var(--text-muted)",
+                                            }}
+                                            title={chat.title}
+                                        >
+                                            <button
+                                                onClick={() => { loadChat(chat.id); }}
+                                                className="flex-1 min-w-0 text-left px-2 py-2 rounded-xl flex items-center gap-2.5 overflow-hidden cursor-pointer border-none bg-transparent"
+                                            >
+                                                <MessageSquare size={12} style={{ flexShrink: 0, opacity: 0.6 }} />
+                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{chat.title}</span>
+                                                {isActive && (
+                                                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--accent)" }} />
+                                                )}
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleDeleteChat(chat.id, chat.title); }}
+                                                className="mr-1 w-7 h-7 rounded-lg flex items-center justify-center border-none bg-transparent cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                                                style={{ color: "var(--text-faint)" }}
+                                                title="Delete chat"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
+                                    </div>
                                 );
                             })
                         ) : (
@@ -144,7 +170,7 @@ export default function Sidebar() {
                             return (
                                 <button
                                     key={chat.id}
-                                    onClick={() => { loadChat(chat.id); setActiveChat(chat.id); }}
+                                    onClick={() => { loadChat(chat.id); }}
                                     className="w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer border-none"
                                     style={{
                                         backgroundColor: isActive ? "var(--accent-dim)" : "transparent",

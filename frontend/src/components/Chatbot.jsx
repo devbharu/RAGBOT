@@ -11,7 +11,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
     Send, Paperclip, FileText, ChevronDown,
     Upload, X, FileUp, CheckCircle, Loader2,
-    ArrowDown, RefreshCw, Clock, FileSearch, Trash2, Sun, Moon, Share2, Copy, Check,
+    ArrowDown, ArrowUp, RefreshCw, Clock, FileSearch, Trash2, Sun, Moon, Share2, Copy, Check,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -41,7 +41,7 @@ const CopyButton = ({ text }) => {
     const [copied, setCopied] = useState(false);
     const handleCopy = async (e) => {
         e.stopPropagation();
-        try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { }
+        try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { setCopied(false); }
     };
     return (
         <button onClick={handleCopy} title="Copy"
@@ -356,7 +356,17 @@ const ThemeToggle = () => {
 /* ─── Main Chatbot ───────────────────────────────────────────── */
 const Chatbot = () => {
     const navigate = useNavigate();
-    const { files, selectedFile, setSelectedFile, uploading, uploadProgress, handleUploadFile, handleDeleteFile, handleReindex, messages, setMessages, addChatToHistory, activeChat } = useApp();
+    const {
+        files,
+        selectedFile,
+        setSelectedFile,
+        uploading,
+        handleDeleteFile,
+        messages,
+        setMessages,
+        currentChatId,
+        createChat,
+    } = useApp();
 
     const [inputValue, setInputValue] = useState("");
     // Multiple paste cards: [{ id: number, content: string }]
@@ -365,26 +375,64 @@ const Chatbot = () => {
     const [modalCardId, setModalCardId] = useState(null);
 
     const [isTyping, setIsTyping] = useState(false);
+    const [isStreaming, setIsStreaming] = useState(false);
     const [activePanel, setActivePanel] = useState(null);
     const [showDropdown, setShowDropdown] = useState(false);
     const [showUploadPanel, setShowUploadPanel] = useState(false);
-    const [showScrollBtn, setShowScrollBtn] = useState(false);
-    const [userScrolled, setUserScrolled] = useState(false);
+    const [isAtTop, setIsAtTop] = useState(true);
+    const [isAtBottom, setIsAtBottom] = useState(true);
 
-    const messagesEndRef = useRef(null);
     const scrollContainerRef = useRef(null);
     const textareaRef = useRef(null);
+    const abortControllerRef = useRef(null);
+    const activeRequestIdRef = useRef(0);
     const isAtBottomRef = useRef(true);
+    const shouldAutoScrollRef = useRef(true);
+    const SCROLL_THRESHOLD = 80;
 
-    const scrollToBottom = useCallback((behavior = "smooth") => { messagesEndRef.current?.scrollIntoView({ behavior }); }, []);
-    const checkIsAtBottom = useCallback(() => { const el = scrollContainerRef.current; if (!el) return true; return el.scrollHeight - el.scrollTop - el.clientHeight < 80; }, []);
+    const scrollToTop = useCallback((behavior = "smooth") => {
+        const el = scrollContainerRef.current;
+        if (!el) return;
+        el.scrollTo({ top: 0, behavior });
+    }, []);
+    const scrollToBottom = useCallback((behavior = "smooth") => {
+        const el = scrollContainerRef.current;
+        if (!el) return;
+        el.scrollTo({ top: el.scrollHeight, behavior });
+    }, []);
+
+    const checkIsAtBottom = useCallback(() => {
+        const el = scrollContainerRef.current;
+        if (!el) return true;
+        return el.scrollHeight - el.scrollTop <= el.clientHeight + SCROLL_THRESHOLD;
+    }, [SCROLL_THRESHOLD]);
+
+    const checkIsAtTop = useCallback(() => {
+        const el = scrollContainerRef.current;
+        if (!el) return true;
+        return el.scrollTop <= 0;
+    }, []);
+
     const handleScroll = useCallback(() => {
-        const atBottom = checkIsAtBottom(); isAtBottomRef.current = atBottom;
-        setShowScrollBtn(!atBottom);
-        if (atBottom) setUserScrolled(false); else setUserScrolled(true);
-    }, [checkIsAtBottom]);
+        const el = scrollContainerRef.current;
+        if (!el) return;
 
-    useEffect(() => { if (!userScrolled) scrollToBottom("smooth"); }, [messages, userScrolled, scrollToBottom]);
+        const atTop = checkIsAtTop();
+        const atBottom = checkIsAtBottom();
+
+        isAtBottomRef.current = atBottom;
+        shouldAutoScrollRef.current = atBottom;
+        setIsAtTop(atTop);
+        setIsAtBottom(atBottom);
+    }, [checkIsAtBottom, checkIsAtTop]);
+
+    useEffect(() => {
+        if (shouldAutoScrollRef.current) {
+            scrollToBottom("auto");
+        }
+        requestAnimationFrame(() => handleScroll());
+    }, [messages, scrollToBottom, handleScroll]);
+
     useEffect(() => { if (isTyping && isAtBottomRef.current) scrollToBottom("auto"); }, [messages, isTyping, scrollToBottom]);
     useEffect(() => {
         if (textareaRef.current) {
@@ -392,12 +440,26 @@ const Chatbot = () => {
             textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
         }
     }, [inputValue]);
-    useEffect(() => {
-        if (messages.length > 1 && !activeChat) {
-            const firstUserMsg = messages.find(msg => msg.type === "user");
-            if (firstUserMsg) addChatToHistory(firstUserMsg.content.substring(0, 50));
-        }
-    }, [messages.length, activeChat, messages, addChatToHistory]);
+
+    const appendToLastAssistant = useCallback((updater) => {
+        setMessages((prev) => {
+            const next = [...prev];
+            for (let i = next.length - 1; i >= 0; i--) {
+                if (next[i].type === "bot") {
+                    next[i] = updater(next[i]);
+                    break;
+                }
+            }
+            return next;
+        });
+    }, [setMessages]);
+
+    const isRequestActive = useCallback((requestId) => {
+        return (
+            activeRequestIdRef.current === requestId &&
+            !abortControllerRef.current?.signal?.aborted
+        );
+    }, []);
 
     /* ── Paste — intercept large pastes, push to cards array ── */
     const handlePaste = useCallback((e) => {
@@ -424,9 +486,26 @@ const Chatbot = () => {
         return parts.join("\n\n");
     };
 
-    const canSend = (inputValue.trim() || pasteCards.length > 0) && selectedFile && !uploading;
+    const canSend = (inputValue.trim() || pasteCards.length > 0) && selectedFile && !uploading && !isStreaming;
+
+    const handleStopGenerating = useCallback(() => {
+        const controller = abortControllerRef.current;
+        if (controller && !controller.signal.aborted) {
+            controller.abort();
+        }
+        abortControllerRef.current = null;
+        activeRequestIdRef.current = 0;
+        setIsStreaming(false);
+        setIsTyping(false);
+    }, []);
 
     const handleSend = async (overrideText) => {
+        if (isStreaming) return;
+
+        let requestId = 0;
+        let controller = null;
+        let drip = null;
+
         const text = overrideText || buildPrompt();
         if (!text.trim()) return;
         if (!selectedFile) {
@@ -434,68 +513,167 @@ const Chatbot = () => {
             return;
         }
         const userMsg = { id: Date.now(), type: "user", content: text, timestamp: new Date() };
-        setMessages(prev => [...prev, userMsg]);
+        const assistantPlaceholderId = Date.now() + 1;
+        setMessages(prev => [
+            ...prev,
+            userMsg,
+            { id: assistantPlaceholderId, type: "bot", content: "", timestamp: new Date(), thinking: "", thinkDone: false },
+        ]);
         setInputValue(""); setPasteCards([]); setModalCardId(null);
-        setIsTyping(true); setUserScrolled(false); isAtBottomRef.current = true;
-        const botId = Date.now() + 1;
-        setMessages(prev => [...prev, { id: botId, type: "bot", content: "", timestamp: new Date(), thinking: "", thinkDone: false }]);
+        setIsTyping(true); isAtBottomRef.current = true;
+        shouldAutoScrollRef.current = true;
 
         try {
+            controller = new AbortController();
+            requestId = Date.now();
+            abortControllerRef.current = controller;
+            activeRequestIdRef.current = requestId;
+            setIsStreaming(true);
+
+            const appendIfActive = (updater) => {
+                if (!isRequestActive(requestId)) return;
+                appendToLastAssistant(updater);
+            };
+
+            let chatId = currentChatId;
+            if (!chatId) {
+                chatId = await createChat(text.slice(0, 80));
+            }
+
+            if (!isRequestActive(requestId)) {
+                return;
+            }
+
+            const accessToken = localStorage.getItem("access_token");
+            const headers = { "Content-Type": "application/json" };
+            if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+
             const response = await fetch(`${API}/generate`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt: userMsg.content, filename: selectedFile, temperature: 0.4, max_output_tokens: 1024, top_p: 0.9 })
+                method: "POST",
+                headers,
+                signal: controller.signal,
+                body: JSON.stringify({
+                    prompt: userMsg.content,
+                    filename: selectedFile,
+                    chat_id: chatId,
+                    temperature: 0.4,
+                    max_output_tokens: 1024,
+                    top_p: 0.9,
+                })
             });
+
+            if (!response.ok) {
+                let msg = `Error: ${response.status}`;
+                try {
+                    const err = await response.json();
+                    msg = `Error: ${err.error || response.status}`;
+                } catch { msg = `Error: ${response.status}`; }
+                appendIfActive((last) => ({ ...last, content: msg }));
+                return;
+            }
+
             const contentType = response.headers.get("content-type") || "";
             if (contentType.includes("application/json")) {
                 const data = await response.json();
-                setMessages(prev => prev.map(msg => msg.id === botId ? { ...msg, content: data.response || "" } : msg));
+                appendIfActive((last) => ({ ...last, content: data.response || "" }));
+                return;
+            }
+            if (!response.body) {
+                appendIfActive((last) => ({ ...last, content: "Error: Empty response stream" }));
                 return;
             }
             const tokenQueue = [];
             const DRIP_INTERVAL = 18, CHARS_PER_TICK = 2;
-            const drip = setInterval(() => {
+            drip = setInterval(() => {
+                if (!isRequestActive(requestId)) {
+                    clearInterval(drip);
+                    return;
+                }
                 if (!tokenQueue.length) return;
                 const chunk = tokenQueue.splice(0, CHARS_PER_TICK).join("");
-                setMessages(prev => prev.map(msg => msg.id === botId ? { ...msg, content: msg.content + chunk } : msg));
+                appendIfActive((last) => ({ ...last, content: (last.content || "") + chunk }));
                 if (isAtBottomRef.current) scrollToBottom("auto");
             }, DRIP_INTERVAL);
             const reader = response.body.getReader(), decoder = new TextDecoder();
             let buffer = "";
+            let streamDone = false;
             while (true) {
+                if (!isRequestActive(requestId)) break;
                 const { done, value } = await reader.read(); if (done) break;
+                if (!isRequestActive(requestId)) break;
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split("\n"); buffer = lines.pop();
                 for (const line of lines) {
+                    if (!isRequestActive(requestId)) break;
                     if (!line.startsWith("data: ")) continue;
-                    const data = line.slice(6).trim(); if (data === "[DONE]") break;
+                    const data = line.slice(6).trim();
+                    if (data === "[DONE]") {
+                        streamDone = true;
+                        break;
+                    }
                     try {
                         const json = JSON.parse(data);
                         if (json.images) continue;
-                        if (json.think_token) { setMessages(prev => prev.map(msg => msg.id === botId ? { ...msg, thinking: (msg.thinking || "") + json.think_token } : msg)); continue; }
-                        if (json.think_end) { setMessages(prev => prev.map(msg => msg.id === botId ? { ...msg, thinkDone: true } : msg)); continue; }
+                        if (json.think_token) {
+                            appendIfActive((last) => ({
+                                ...last,
+                                thinking: (last.thinking || "") + json.think_token,
+                            }));
+                            continue;
+                        }
+                        if (json.think_end) {
+                            appendIfActive((last) => ({ ...last, thinkDone: true }));
+                            continue;
+                        }
                         const token = json.token || "";
                         if (token) tokenQueue.push(...token.split(""));
-                    } catch { }
+                    } catch { continue; }
                 }
+                if (streamDone) break;
             }
-            await new Promise(resolve => {
-                const drain = setInterval(() => {
-                    if (!tokenQueue.length) { clearInterval(drain); resolve(); return; }
-                    const chunk = tokenQueue.splice(0, CHARS_PER_TICK).join("");
-                    setMessages(prev => prev.map(msg => msg.id === botId ? { ...msg, content: msg.content + chunk } : msg));
-                    if (isAtBottomRef.current) scrollToBottom("auto");
-                }, DRIP_INTERVAL);
-            });
-            clearInterval(drip);
+            if (isRequestActive(requestId)) {
+                await new Promise(resolve => {
+                    const drain = setInterval(() => {
+                        if (!isRequestActive(requestId)) {
+                            clearInterval(drain);
+                            resolve();
+                            return;
+                        }
+                        if (!tokenQueue.length) {
+                            clearInterval(drain);
+                            resolve();
+                            return;
+                        }
+                        const chunk = tokenQueue.splice(0, CHARS_PER_TICK).join("");
+                        appendIfActive((last) => ({ ...last, content: (last.content || "") + chunk }));
+                        if (isAtBottomRef.current) scrollToBottom("auto");
+                    }, DRIP_INTERVAL);
+                });
+            }
         } catch (error) {
-            setMessages(prev => prev.map(msg => msg.id === botId ? { ...msg, content: `Error: ${error.message}` } : msg));
-        } finally { setIsTyping(false); }
+            if (error?.name !== "AbortError" && isRequestActive(requestId)) {
+                appendToLastAssistant((last) => ({ ...last, content: `Error: ${error.message}` }));
+            }
+        } finally {
+            if (drip) {
+                clearInterval(drip);
+            }
+            if (abortControllerRef.current?.signal?.aborted && activeRequestIdRef.current === requestId) {
+                abortControllerRef.current = null;
+            }
+            if (requestId && activeRequestIdRef.current === requestId) {
+                abortControllerRef.current = null;
+                activeRequestIdRef.current = 0;
+                setIsStreaming(false);
+                setIsTyping(false);
+            }
+        }
     };
 
     const handleKeyDown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } };
     const togglePanel = (panel) => setActivePanel(prev => prev === panel ? null : panel);
-    const isEmpty = files.length === 0 && messages.length <= 1;
-    const hasFileButEmpty = files.length > 0 && messages.length <= 1;
+    const isEmpty = files.length === 0 && messages.length === 0;
+    const hasFileButEmpty = files.length > 0 && messages.length === 0;
     const panelOpen = activePanel !== null;
     const modalCard = pasteCards.find(c => c.id === modalCardId);
 
@@ -601,7 +779,7 @@ const Chatbot = () => {
                         )}
 
                         {!isEmpty && !hasFileButEmpty && (
-                            <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 pt-8 pb-4 flex flex-col">
+                            <div ref={scrollContainerRef} onScroll={handleScroll} className="relative flex-1 overflow-y-auto px-4 pt-8 pb-4 flex flex-col">
                                 <div className="max-w-[720px] w-full mx-auto flex flex-col gap-7">
                                     {messages.map((msg, idx) => (
                                         <div key={msg.id}
@@ -630,16 +808,36 @@ const Chatbot = () => {
                                                 )}
                                         </div>
                                     ))}
-                                    <div ref={messagesEndRef} className="h-px" />
+                                    <div className="h-px" />
                                 </div>
 
-                                {showScrollBtn && (
-                                    <div className="sticky bottom-3 flex justify-center">
-                                        <button onClick={() => { setUserScrolled(false); scrollToBottom("smooth"); }} className="flex items-center gap-1.5 bg-[var(--bg-elevated)] border border-[var(--border-mid)] text-[var(--text-muted)] px-3.5 py-1.5 rounded-full text-[11px] cursor-pointer font-mono shadow-lg hover:text-[var(--text-body)] transition-all">
-                                            <ArrowDown size={11} />Scroll to bottom
+                                <div className="absolute right-4 bottom-4 z-20 flex flex-col gap-2">
+                                    {isAtTop && !isAtBottom && (
+                                        <button
+                                            onClick={() => {
+                                                shouldAutoScrollRef.current = true;
+                                                scrollToBottom("smooth");
+                                                requestAnimationFrame(() => handleScroll());
+                                            }}
+                                            title="Scroll to latest"
+                                            className="w-9 h-9 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-mid)] text-[var(--text-muted)] cursor-pointer shadow-lg transition-all hover:text-[var(--text-body)] hover:border-[var(--accent)]/40 flex items-center justify-center"
+                                        >
+                                            <ArrowDown size={14} />
                                         </button>
-                                    </div>
-                                )}
+                                    )}
+                                    {isAtBottom && !isAtTop && (
+                                        <button
+                                            onClick={() => {
+                                                scrollToTop("smooth");
+                                                requestAnimationFrame(() => handleScroll());
+                                            }}
+                                            title="Scroll to first"
+                                            className="w-9 h-9 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-mid)] text-[var(--text-muted)] cursor-pointer shadow-lg transition-all hover:text-[var(--text-body)] hover:border-[var(--accent)]/40 flex items-center justify-center"
+                                        >
+                                            <ArrowUp size={14} />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         )}
 
@@ -680,9 +878,10 @@ const Chatbot = () => {
                                         onChange={e => setInputValue(e.target.value)}
                                         onKeyDown={handleKeyDown}
                                         onPaste={handlePaste}
+                                        disabled={isStreaming}
                                         placeholder={pasteCards.length > 0 ? "Add a message about the pasted content…" : !selectedFile ? "Upload a file to start…" : `Ask anything about ${selectedFile}…`}
                                         rows={1}
-                                        className="flex-1 bg-transparent border-none outline-none resize-none text-[var(--text-primary)] text-[14px] leading-[1.65] font-mono px-4 pt-3.5 pb-1 overflow-y-auto"
+                                        className="flex-1 bg-transparent border-none outline-none resize-none text-[var(--text-primary)] text-[14px] leading-[1.65] font-mono px-4 pt-3.5 pb-1 overflow-y-auto disabled:opacity-60"
                                         style={{ maxHeight: 200, caretColor: "var(--accent)" }}
                                     />
 
@@ -691,7 +890,16 @@ const Chatbot = () => {
                                             {uploading ? <Loader2 size={16} className="text-[var(--accent)] animate-spin" /> : <Paperclip size={16} />}
                                         </button>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[10px] text-[var(--text-faint)] font-mono hidden sm:block">Enter to send · Shift+Enter for newline</span>
+                                            {isStreaming ? (
+                                                <button
+                                                    onClick={handleStopGenerating}
+                                                    className="px-3 py-1.5 rounded-lg bg-[var(--accent-dim)] border border-[var(--accent)]/35 text-[var(--accent)] text-[11px] font-mono cursor-pointer transition-all hover:bg-[var(--accent)]/18"
+                                                >
+                                                    Stop Generating
+                                                </button>
+                                            ) : (
+                                                <span className="text-[10px] text-[var(--text-faint)] font-mono hidden sm:block">Enter to send · Shift+Enter for newline</span>
+                                            )}
                                             <button onClick={() => handleSend()} disabled={!canSend}
                                                 className={`w-8 h-8 rounded-xl flex items-center justify-center border transition-all ${canSend ? "bg-[var(--accent)] border-[var(--accent)] text-[#09090c] cursor-pointer hover:opacity-90 active:scale-90" : "bg-[var(--bg-elevated)] border-[var(--border-mid)] text-[var(--text-faint)] cursor-not-allowed opacity-50"}`}>
                                                 <Send size={13} />

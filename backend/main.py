@@ -19,12 +19,12 @@ import queue
 import requests
 from flask import Flask, jsonify, request, Response, stream_with_context, send_file, make_response
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 from dotenv import load_dotenv
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
-from models import db
+from models import db, Chat, Message
 from auth import auth_bp
 from rag_graph import crag_retrieve
 from metall_report_graph import generate_report, METALL_SECTION_KEYWORDS
@@ -646,6 +646,21 @@ def generate_ollama_response(
 # 14. Flask Endpoints
 # ──────────────────────────────────────────────────────────────
 
+def _normalize_user_id(raw_identity):
+    if raw_identity is None:
+        return None
+    try:
+        return int(raw_identity)
+    except Exception:
+        return None
+
+
+def _save_message(chat_id: int, role: str, content: str) -> None:
+    if not chat_id or not content.strip():
+        return
+    db.session.add(Message(chat_id=chat_id, role=role, content=content.strip()))
+    db.session.commit()
+
 @app.route("/health", methods=["GET"])
 def health():
     ollama_ok = False
@@ -697,15 +712,109 @@ def status(filename: str):
     return jsonify({"filename": filename, "status": s})
 
 
+@app.route("/chat", methods=["POST"])
+@jwt_required()
+def create_chat():
+    user_id = _normalize_user_id(get_jwt_identity())
+    if not user_id:
+        return jsonify({"error": "Invalid user identity"}), 401
+
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "New Chat").strip()[:255] or "New Chat"
+
+    chat = Chat(user_id=user_id, title=title)
+    db.session.add(chat)
+    db.session.commit()
+    return jsonify({"chat": chat.to_dict()}), 201
+
+
+@app.route("/chats", methods=["GET"])
+@jwt_required()
+def list_chats():
+    user_id = _normalize_user_id(get_jwt_identity())
+    if not user_id:
+        return jsonify({"error": "Invalid user identity"}), 401
+
+    chats = (Chat.query
+        .filter_by(user_id=user_id)
+        .order_by(Chat.created_at.desc())
+        .all())
+
+    return jsonify({"chats": [c.to_dict() for c in chats]})
+
+
+@app.route("/chat/<int:chat_id>", methods=["GET"])
+@jwt_required()
+def get_chat(chat_id: int):
+    user_id = _normalize_user_id(get_jwt_identity())
+    if not user_id:
+        return jsonify({"error": "Invalid user identity"}), 401
+
+    chat = Chat.query.filter_by(id=chat_id, user_id=user_id).first()
+    if not chat:
+        return jsonify({"error": "Chat not found"}), 404
+
+    messages = (Message.query
+        .filter_by(chat_id=chat_id)
+        .order_by(Message.timestamp.asc())
+        .all())
+
+    return jsonify({
+        "chat": chat.to_dict(),
+        "messages": [m.to_dict() for m in messages],
+    })
+
+
+@app.route("/chat/<int:chat_id>", methods=["DELETE"])
+@jwt_required()
+def delete_chat(chat_id: int):
+    user_id = _normalize_user_id(get_jwt_identity())
+    if not user_id:
+        return jsonify({"error": "Invalid user identity"}), 401
+
+    chat = Chat.query.filter_by(id=chat_id, user_id=user_id).first()
+    if not chat:
+        return jsonify({"error": "Chat not found"}), 404
+
+    db.session.delete(chat)
+    db.session.commit()
+    return jsonify({"status": "deleted", "chat_id": chat_id})
+
+
 @app.route("/generate", methods=["POST"])
+@jwt_required(optional=True)
 def chat():
     data     = request.json or {}
     prompt   = data.get("prompt",   "").strip()
     filename = data.get("filename", "").strip()
+    chat_id  = data.get("chat_id")
+
+    user_id = _normalize_user_id(get_jwt_identity())
+
     if not prompt:
         return jsonify({"error": "No prompt provided"}), 400
     if not filename:
         return jsonify({"error": "No filename provided"}), 400
+
+    resolved_chat_id = None
+    if user_id:
+        if chat_id is not None:
+            try:
+                resolved_chat_id = int(chat_id)
+            except Exception:
+                return jsonify({"error": "Invalid chat_id"}), 400
+
+            found = Chat.query.filter_by(id=resolved_chat_id, user_id=user_id).first()
+            if not found:
+                return jsonify({"error": "Chat not found"}), 404
+        else:
+            chat_title = prompt[:80] if prompt else "New Chat"
+            new_chat = Chat(user_id=user_id, title=chat_title)
+            db.session.add(new_chat)
+            db.session.commit()
+            resolved_chat_id = new_chat.id
+
+        _save_message(resolved_chat_id, "user", prompt)
 
     result, is_stream = generate_ollama_response(
         query       = prompt,
@@ -716,11 +825,37 @@ def chat():
     )
 
     if is_stream:
+        def stream_and_persist():
+            assistant_text = ""
+            try:
+                for chunk in result:
+                    if isinstance(chunk, str) and chunk.startswith("data: "):
+                        payload = chunk[6:].strip()
+                        if payload and payload != "[DONE]":
+                            try:
+                                parsed = json.loads(payload)
+                                token = parsed.get("token", "")
+                                if token:
+                                    assistant_text += token
+                            except Exception:
+                                pass
+                    yield chunk
+            finally:
+                if user_id and resolved_chat_id and assistant_text.strip():
+                    try:
+                        _save_message(resolved_chat_id, "assistant", assistant_text)
+                    except Exception as e:
+                        print(f"[CHAT] Failed to save assistant message: {e}")
+
         return Response(
-            stream_with_context(result),
+            stream_with_context(stream_and_persist()),
             mimetype = "text/event-stream",
             headers  = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    if user_id and resolved_chat_id:
+        _save_message(resolved_chat_id, "assistant", result)
+
     return jsonify({"prompt": prompt, "filename": filename, "response": result})
 
 

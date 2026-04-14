@@ -390,11 +390,13 @@ export default function ReportPanel() {
         if (esRef.current) esRef.current.close();
     }, []);
 
-    if (!filename) { navigate("/"); return null; }
+    useEffect(() => {
+        if (!filename) navigate("/", { replace: true });
+    }, [filename, navigate]);
 
     const persistHint = v => {
         setQueryHint(v);
-        try { sessionStorage.setItem(SESSION_HINT_KEY, v); } catch { }
+        try { sessionStorage.setItem(SESSION_HINT_KEY, v); } catch { return; }
     };
 
     const pushLog = useCallback((icon, label, done = false) => {
@@ -441,7 +443,7 @@ export default function ReportPanel() {
                         const lines = buf.split("\n"); buf = lines.pop();
                         for (const line of lines) {
                             if (!line.startsWith("data: ")) continue;
-                            try { const { type, ...rest } = JSON.parse(line.slice(6)); handleSSEEvent(type, rest); } catch { }
+                            try { const { type, ...rest } = JSON.parse(line.slice(6)); handleSSEEvent(type, rest); } catch { continue; }
                         }
                         pump();
                     });
@@ -520,6 +522,8 @@ export default function ReportPanel() {
         const up = () => { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); };
         document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
     };
+
+    if (!filename) return null;
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", background: "var(--bg-base)", color: "var(--text-body)", fontFamily: "'JetBrains Mono','Fira Code',monospace", transition: "background .25s, color .25s" }}>

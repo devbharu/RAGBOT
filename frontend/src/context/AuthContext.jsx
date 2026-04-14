@@ -3,6 +3,8 @@
  * Handles login, signup, logout, token persistence
  */
 
+/* eslint-disable react-refresh/only-export-components */
+
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import axios from "axios";
 
@@ -88,7 +90,7 @@ export function AuthProvider({ children }) {
                             console.log("[AUTH] ✓ Token refreshed via interceptor, retrying request");
                             return axios(config);
                         }
-                    } catch (refreshErr) {
+                    } catch {
                         console.error("[AUTH] ✗ Refresh failed in interceptor, logging out");
                         // Refresh failed, logout
                         setUser(null);

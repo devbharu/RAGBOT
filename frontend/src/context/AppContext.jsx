@@ -1,12 +1,12 @@
 /**
- * AppContext.jsx — Central state management for CMTI Bot (v6.0)
- * Fixes:
- *  - setReportLatex / setReportSections now properly exposed in context value
- *  - getFileUrl helper added for PDF viewer
+ * AppContext.jsx — Central state management for CMTI Bot
  */
+
+/* eslint-disable react-refresh/only-export-components */
 
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import axios from "axios";
+import { useAuth } from "./AuthContext";
 
 export const API = "http://127.0.0.1:8080";
 
@@ -21,32 +21,21 @@ export const useApp = () => {
 
 // ─── Provider ──────────────────────────────────────────────────
 export function AppProvider({ children }) {
+    const { isAuthenticated, loading: authLoading } = useAuth();
+
     // ── Sidebar state ───────────────────────────────────────────
     const [sidebarOpen, setSidebarOpen] = useState(true);
 
-    // ── Chat history state ──────────────────────────────────────
-    const [chatHistory, setChatHistory] = useState(() => {
-        // Load from localStorage on mount
-        const stored = localStorage.getItem("chatHistory");
-        return stored ? JSON.parse(stored) : [];
-    });
-    const [activeChat, setActiveChat] = useState(null);
+    // ── Chat state (backend persistent) ─────────────────────────
+    const [chats, setChats] = useState([]);
+    const [currentChatId, setCurrentChatId] = useState(null);
+    const [messages, setMessages] = useState([]);
 
     // ── File state ──────────────────────────────────────────────
     const [files, setFiles] = useState([]);
     const [selectedFile, setSelectedFile] = useState("");
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState("Uploading…");
-
-    // ── Chat messages ───────────────────────────────────────────
-    const [messages, setMessages] = useState([
-        {
-            id: 1,
-            type: "bot",
-            content: "Upload a PDF or TXT and start querying.",
-            timestamp: new Date(),
-        },
-    ]);
 
     // ── Report state ────────────────────────────────────────────
     const [reportLatex, setReportLatex] = useState("");
@@ -75,6 +64,104 @@ export function AppProvider({ children }) {
     useEffect(() => {
         fetchFiles();
     }, [fetchFiles]);
+
+    const fetchChats = useCallback(async () => {
+        try {
+            const res = await axios.get(`${API}/chats`);
+            const chatList = res.data?.chats || [];
+            setChats(chatList);
+            return chatList;
+        } catch (e) {
+            console.error("Failed to fetch chats:", e);
+            return null;
+        }
+    }, []);
+
+    const loadChat = useCallback(async (chatId) => {
+        if (!chatId) {
+            setCurrentChatId(null);
+            setMessages([]);
+            return;
+        }
+        try {
+            const res = await axios.get(`${API}/chat/${chatId}`);
+            const incoming = (res.data?.messages || []).map((m) => ({
+                id: m.id,
+                type: m.role === "assistant" ? "bot" : "user",
+                content: m.content,
+                timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+            }));
+            setCurrentChatId(chatId);
+            setMessages(incoming);
+            localStorage.setItem("currentChatId", String(chatId));
+        } catch (e) {
+            console.error("Failed to load chat:", e);
+        }
+    }, []);
+
+    const createChat = useCallback(async (title = "New Chat") => {
+        const res = await axios.post(`${API}/chat`, { title });
+        const chat = res.data?.chat;
+        if (!chat) return null;
+        setChats((prev) => [chat, ...prev]);
+        setCurrentChatId(chat.id);
+        localStorage.setItem("currentChatId", String(chat.id));
+        return chat.id;
+    }, []);
+
+    const deleteChat = useCallback(async (chatId) => {
+        try {
+            await axios.delete(`${API}/chat/${chatId}`);
+
+            const nextChats = chats.filter((c) => c.id !== chatId);
+            setChats(nextChats);
+
+            if (currentChatId === chatId) {
+                if (nextChats.length > 0) {
+                    await loadChat(nextChats[0].id);
+                } else {
+                    setCurrentChatId(null);
+                    setMessages([]);
+                    localStorage.removeItem("currentChatId");
+                }
+            }
+        } catch (e) {
+            console.error("Failed to delete chat:", e);
+            throw e;
+        }
+    }, [chats, currentChatId, loadChat]);
+
+    useEffect(() => {
+        if (authLoading) return;
+
+        const bootstrap = async () => {
+            if (!isAuthenticated) {
+                setChats([]);
+                setCurrentChatId(null);
+                setMessages([]);
+                localStorage.removeItem("currentChatId");
+                return;
+            }
+
+            const list = await fetchChats();
+            if (list === null) {
+                return;
+            }
+            if (list.length === 0) {
+                setCurrentChatId(null);
+                setMessages([]);
+                localStorage.removeItem("currentChatId");
+                return;
+            }
+
+            const storedRaw = localStorage.getItem("currentChatId");
+            const storedId = storedRaw ? Number(storedRaw) : null;
+            const chatToLoad = list.find((c) => c.id === storedId)?.id || list[0].id;
+            await loadChat(chatToLoad);
+        };
+
+        bootstrap();
+    }, [authLoading, isAuthenticated, fetchChats, loadChat]);
 
     // Poll indexing files every 3s
     useEffect(() => {
@@ -223,66 +310,29 @@ export function AppProvider({ children }) {
 
     // ── Reset chat ──────────────────────────────────────────────
     const resetChat = useCallback(() => {
-        setMessages([
-            {
-                id: 1,
-                type: "bot",
-                content: "Upload a PDF or TXT and start querying.",
-                timestamp: new Date(),
-            },
-        ]);
+        setMessages([]);
     }, []);
 
-    // ── Chat history management ─────────────────────────────────
-    const startNewChat = useCallback(() => {
-        resetChat();
-        setActiveChat(null);
+    // ── Chat management ─────────────────────────────────────────
+    const startNewChat = useCallback(async () => {
+        await createChat("New Chat");
+        setMessages([]);
         setSidebarOpen(false);
-    }, [resetChat]);
+    }, [createChat]);
 
-    const addChatToHistory = useCallback((title) => {
-        if (!title || title.trim() === "") return;
-        
-        const newChat = {
-            id: Date.now(),
-            title: title.substring(0, 50), // Limit title length
-            messages: messages,
-            createdAt: new Date().toISOString(),
-        };
+    const addChatToHistory = useCallback(async (title) => {
+        if (!title || title.trim() === "") return null;
+        return createChat(title.substring(0, 80));
+    }, [createChat]);
 
-        const updated = [newChat, ...chatHistory];
-        setChatHistory(updated);
-        setActiveChat(newChat.id);
-        
-        // Persist to localStorage
-        localStorage.setItem("chatHistory", JSON.stringify(updated));
-        
-        return newChat.id;
-    }, [chatHistory, messages]);
-
-    const loadChat = useCallback((chatId) => {
-        const chat = chatHistory.find((c) => c.id === chatId);
-        if (chat) {
-            setMessages(chat.messages);
-            setActiveChat(chatId);
+    const setActiveChat = useCallback((chatId) => {
+        setCurrentChatId(chatId || null);
+        if (!chatId) {
+            localStorage.removeItem("currentChatId");
+        } else {
+            localStorage.setItem("currentChatId", String(chatId));
         }
-    }, [chatHistory]);
-
-    const deleteChat = useCallback((chatId) => {
-        const updated = chatHistory.filter((c) => c.id !== chatId);
-        setChatHistory(updated);
-        localStorage.setItem("chatHistory", JSON.stringify(updated));
-        
-        if (activeChat === chatId) {
-            if (updated.length > 0) {
-                loadChat(updated[0].id);
-            } else {
-                startNewChat();
-            }
-        }
-    }, [chatHistory, activeChat, loadChat, startNewChat]);
-
-    // ── Reset chat ──────────────────────────────────────────────
+    }, []);
 
     // ── PDF URL helper ──────────────────────────────────────────
     // Constructs the URL to serve a file from the Flask /file/<path:filename> endpoint.
@@ -306,9 +356,17 @@ export function AppProvider({ children }) {
         sidebarOpen,
         setSidebarOpen,
 
-        // Chat history
-        chatHistory,
-        activeChat,
+        // Chats
+        chats,
+        setChats,
+        currentChatId,
+        setCurrentChatId,
+        fetchChats,
+        createChat,
+        
+        // Sidebar compatibility aliases
+        chatHistory: chats,
+        activeChat: currentChatId,
         setActiveChat,
         startNewChat,
         addChatToHistory,
