@@ -10,6 +10,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { AppProvider } from "./context/AppContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import PrivateRoute from "./components/PrivateRoute";
+import { Toaster } from "react-hot-toast";
 
 // Lazy imports
 const MainLayout = lazy(() => import("./components/MainLayout"));
@@ -29,6 +30,7 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <AppProvider>
+          <Toaster position="top-right" toastOptions={{ style: { background: 'var(--bg-panel)', color: 'var(--text-body)', border: '1px solid var(--border)', fontSize: '13px', fontFamily: "'JetBrains Mono', monospace" } }} />
           <BrowserRouter>
             <Suspense fallback={<Loader />}>
               <Routes>
@@ -57,6 +59,8 @@ export default function App() {
                     </PrivateRoute>
                   }
                 />
+
+
 
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

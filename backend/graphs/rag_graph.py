@@ -46,7 +46,7 @@ from typing import TypedDict
 
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_ollama import ChatOllama
+from langchain_community.chat_models import ChatLiteLLM
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
@@ -56,7 +56,6 @@ from langgraph.graph import StateGraph, END
 # Config
 # ──────────────────────────────────────────────────────────────
 
-OLLAMA_HOST   = os.getenv("OLLAMA_HOST",          "http://localhost:11434")
 OLLAMA_MODEL  = os.getenv("OLLAMA_MODEL",          "gpt-oss:120b-cloud")
 EMBED_MODEL   = os.getenv("EMBED_MODEL",           "BAAI/bge-small-en-v1.5")
 CHROMA_DIR    = os.getenv("CHROMA_DIR",            "chroma_db")
@@ -93,7 +92,7 @@ class RAGState(TypedDict):
 # ──────────────────────────────────────────────────────────────
 
 _embedding_fn: HuggingFaceEmbeddings | None = None
-_llm: ChatOllama | None = None
+_llm: ChatLiteLLM | None = None
 
 
 def _get_embedding_fn() -> HuggingFaceEmbeddings:
@@ -107,13 +106,13 @@ def _get_embedding_fn() -> HuggingFaceEmbeddings:
     return _embedding_fn
 
 
-def _get_llm() -> ChatOllama:
+def _get_llm() -> ChatLiteLLM:
     global _llm
     if _llm is None:
-        _llm = ChatOllama(
-            model=OLLAMA_MODEL,
-            base_url=OLLAMA_HOST,
-            temperature=0.1,
+        model_name = os.getenv("LLM_MODEL", OLLAMA_MODEL if "/" in OLLAMA_MODEL else f"ollama/{OLLAMA_MODEL}")
+        _llm = ChatLiteLLM(
+            model=model_name,
+            temperature=0.1
         )
     return _llm
 

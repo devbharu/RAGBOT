@@ -47,10 +47,13 @@ from typing import Optional
 
 import fitz  # PyMuPDF
 import httpx
+import threading
 from PIL import Image
 from dotenv import load_dotenv
 
 load_dotenv()
+
+_FITZ_LOCK = threading.Lock()
 
 # ── Silence noisy loggers ─────────────────────────────────────────
 for _lg in ["pymupdf4llm", "docling", "tesseract", "PIL",
@@ -61,7 +64,6 @@ for _lg in ["pymupdf4llm", "docling", "tesseract", "PIL",
 # ─────────────────────────────────────────────────────────────────
 #  Config
 # ─────────────────────────────────────────────────────────────────
-OLLAMA_BASE_URL    = os.getenv("OLLAMA_BASE_URL",        "http://localhost:11434")
 VLM_MODEL          = os.getenv("VLM_MODEL",              "qwen2.5vl:7b")
 VLM_TIMEOUT        = int(os.getenv("VLM_TIMEOUT",        "120"))
 VLM_MAX_CONCURRENT = int(os.getenv("VLM_MAX_CONCURRENT", "8"))
@@ -534,8 +536,10 @@ def _process_page(
     }
 
     try:
-        # A) Images
-        saved = _extract_images(doc, page_num, filename)
+        # A) Images (fitz operations)
+        with _FITZ_LOCK:
+            saved = _extract_images(doc, page_num, filename)
+            
         if saved:
             result["image_path"]  = saved[0]
             result["image_paths"] = json.dumps(saved)
@@ -544,19 +548,35 @@ def _process_page(
         image_path  = result["image_path"]
         image_paths = result["image_paths"]
 
-        # B) Tables
-        result["tbl_chunks"] = _extract_tables(
-            doc, page_num, total_pages, filename, image_path, image_paths
-        )
+        # B) Tables (fitz operations)
+        with _FITZ_LOCK:
+            tbl_chunks = _extract_tables(
+                doc, page_num, total_pages, filename, image_path, image_paths
+            )
+        result["tbl_chunks"] = tbl_chunks
 
-        # C) Text
-        text, method = _extract_text_fast(doc, page_num)
+        # C) Text (fitz operations)
+        with _FITZ_LOCK:
+            text, method = _extract_text_fast(doc, page_num)
 
+        # D) OCR fallback
         if (not text or len(text.strip()) < OCR_MIN_CHARS) and _OCR_AVAILABLE and not SKIP_OCR:
-            ocr_text, ocr_method = _extract_text_ocr(doc, page_num)
-            if ocr_text:
-                text, method = ocr_text, ocr_method
-                result["has_visual"] = True
+            # ONLY get_pixmap requires fitz, pytesseract OCR itself is external!
+            with _FITZ_LOCK:
+                page = doc[page_num - 1]
+                pix = page.get_pixmap(
+                    matrix=fitz.Matrix(OCR_DPI / 72, OCR_DPI / 72),
+                    colorspace=fitz.csRGB, alpha=False,
+                )
+            try:
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                import pytesseract
+                txt = pytesseract.image_to_string(img, lang=OCR_LANG, config="--psm 3").strip()
+                if txt and len(txt) >= _MD_MIN_LEN:
+                    text, method = txt, "ocr"
+                    result["has_visual"] = True
+            except Exception as e:
+                print(f"  [OCR] p.{page_num}: {e}")
 
         if text and len(text.strip()) >= _MD_MIN_LEN:
             clean = _strip_table_lines(text) if method != "ocr" else text
@@ -566,9 +586,11 @@ def _process_page(
             )
             result["text_chunks"] = [c.to_dict() for c in text_chunks]
 
-        # D) Visual flag for VLM
+        # E) Visual flag for VLM (fitz operations)
         if vlm_active and not result["has_visual"]:
-            result["has_visual"] = _quick_has_visual(doc, page_num)
+            with _FITZ_LOCK:
+                has_visual = _quick_has_visual(doc, page_num)
+            result["has_visual"] = has_visual
 
     except Exception as e:
         import traceback
@@ -605,52 +627,46 @@ async def _close_client() -> None:
         await _VLM_CLIENT.aclose()
         _VLM_CLIENT = None
 
-async def _ollama_available() -> bool:
-    try:
-        async with httpx.AsyncClient(timeout=5) as c:
-            r = await c.get(f"{OLLAMA_BASE_URL}/api/tags")
-            return r.status_code == 200
-    except Exception:
-        return False
+async def _llm_available() -> bool:
+    return True
 
 def _page_to_base64_png(filepath: str, page_num: int, dpi: int = PAGE_RENDER_DPI) -> str:
-    doc  = fitz.open(filepath)
-    page = doc[page_num - 1]
-    pix  = page.get_pixmap(matrix=fitz.Matrix(dpi/72, dpi/72),
-                            colorspace=fitz.csRGB, alpha=False)
-    img  = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-    doc.close()
+    with _FITZ_LOCK:
+        doc  = fitz.open(filepath)
+        page = doc[page_num - 1]
+        pix  = page.get_pixmap(matrix=fitz.Matrix(dpi/72, dpi/72),
+                                colorspace=fitz.csRGB, alpha=False)
+        img  = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        doc.close()
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
     return base64.b64encode(buf.read()).decode()
 
 async def _call_vlm(b64: str, page_num: int) -> str:
-    payload = {
-        "model": VLM_MODEL, "stream": False,
-        "messages": [{"role": "user", "content": VLM_PROMPT, "images": [b64]}],
-    }
-    client = await _get_client()
+    messages = [
+        {"role": "user", "content": [
+            {"type": "text", "text": VLM_PROMPT},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}}
+        ]}
+    ]
+    import litellm
     async with _get_semaphore():
         for attempt in range(1, VLM_RETRY_ATTEMPTS + 1):
             try:
-                r = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload)
-                if r.status_code in (429, 502, 503):
-                    wait = VLM_RETRY_BASE * (2 ** (attempt - 1))
-                    print(f"  [VLM] ⚠ {r.status_code} p.{page_num} retry {wait:.0f}s")
-                    await asyncio.sleep(wait)
-                    continue
-                r.raise_for_status()
-                out = r.json().get("message", {}).get("content", "").strip()
+                r = await litellm.acompletion(model=VLM_MODEL, messages=messages)
+                out = (r.choices[0].message.content or "").strip()
                 return "" if out.upper() == "SKIP" else out
-            except httpx.TimeoutException:
+            except litellm.exceptions.RateLimitError:
                 wait = VLM_RETRY_BASE * (2 ** (attempt - 1))
-                print(f"  [VLM] ⚠ timeout p.{page_num} retry {wait:.0f}s")
+                print(f"  [VLM] ⚠ rate-limit p.{page_num} retry {wait:.0f}s")
+                await asyncio.sleep(wait)
+                continue
+            except Exception as e:
+                wait = VLM_RETRY_BASE * (2 ** (attempt - 1))
+                print(f"  [VLM] ⚠ error p.{page_num} retry {wait:.0f}s: {e}")
                 if attempt < VLM_RETRY_ATTEMPTS:
                     await asyncio.sleep(wait)
-            except Exception as e:
-                print(f"  [VLM] ✗ p.{page_num}: {e}")
-                return ""
     return ""
 
 async def _vlm_for_page(
@@ -691,7 +707,7 @@ async def _vlm_for_page(
 # ─────────────────────────────────────────────────────────────────
 #  MAIN PIPELINE
 # ─────────────────────────────────────────────────────────────────
-async def _process_pdf(filepath: str, ollama_up: bool) -> list[Chunk]:
+async def _process_pdf(filepath: str, llm_up: bool) -> list[Chunk]:
     filename = os.path.basename(filepath)
     print(f"\n{'═'*60}")
     print(f"[LOADER] {filename}")
@@ -706,7 +722,7 @@ async def _process_pdf(filepath: str, ollama_up: bool) -> list[Chunk]:
     doc         = fitz.open(filepath)
     total_pages = len(doc)
 
-    vlm_active = ollama_up and not SKIP_VLM
+    vlm_active = llm_up and not SKIP_VLM
     print(f"  Pages   : {total_pages}")
     print(f"  Threads : {THREAD_WORKERS}  (text + tables + images per page)")
     print(f"  OCR     : {'ON (' + OCR_LANG + ')' if _OCR_AVAILABLE and not SKIP_OCR else 'OFF'}")
@@ -813,9 +829,10 @@ async def _process_pdf(filepath: str, ollama_up: bool) -> list[Chunk]:
 async def load_single_file_async(filepath: str, filename: str) -> list[dict]:
     ext = os.path.splitext(filename)[1].lower()
     if ext == ".pdf":
-        ollama_up = False if SKIP_VLM else await _ollama_available()
-        print(f"[LOADER] Ollama: {'UP → ' + VLM_MODEL if ollama_up else 'DOWN'}")
-        return [c.to_dict() for c in await _process_pdf(filepath, ollama_up)]
+        llm_up = await _llm_available()
+        print(f"[LOADER] LLM: {'UP → ' + VLM_MODEL if llm_up else 'DOWN'}")
+        chunks = await _process_pdf(filepath, llm_up)
+        return [c.to_dict() for c in chunks]
     elif ext == ".txt":
         try:
             with open(filepath, "r", encoding="utf-8") as f:

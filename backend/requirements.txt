@@ -16,3 +16,4 @@ langchain-core
 langchain-ollama
 langgraph
 langchain-community
+litellm

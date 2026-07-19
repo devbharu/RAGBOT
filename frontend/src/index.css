@@ -1,1 +1,39 @@
 @import "tailwindcss";
+
+@layer base {
+    html {
+        height: 100%;
+    }
+
+    body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg-base);
+        color: var(--text-body);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
+    ::selection {
+        background: var(--accent-dim);
+        color: var(--text-primary);
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+        color: var(--text-faint);
+        opacity: 1;
+    }
+}
+
+@layer utilities {
+    .chat-input-focus:focus-within {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 3px var(--focus-ring);
+    }
+}

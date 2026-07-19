@@ -5,6 +5,7 @@ models.py — User database models for authentication
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
+import json
 
 db = SQLAlchemy()
 
@@ -17,7 +18,9 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    preferences = db.Column(db.Text, nullable=True, default='{}')
     chats = db.relationship('Chat', backref='user', lazy=True, cascade='all, delete-orphan')
+    reports = db.relationship('Report', backref='user', lazy=True, cascade='all, delete-orphan')
     
     def set_password(self, password: str):
         """Hash and set the password"""
@@ -29,10 +32,18 @@ class User(db.Model):
     
     def to_dict(self):
         """Convert user to dictionary (for JSON response)"""
+        prefs = {}
+        if self.preferences:
+            try:
+                prefs = json.loads(self.preferences)
+            except json.JSONDecodeError:
+                prefs = {}
+                
         return {
             'id': self.id,
             'username': self.username,
             'email': self.email,
+            'preferences': prefs,
             'created_at': self.created_at.isoformat(),
         }
     
@@ -69,6 +80,7 @@ class Message(db.Model):
     role = db.Column(db.String(20), nullable=False, index=True)
     content = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    extra_data = db.Column(db.Text, nullable=True)
 
     def to_dict(self):
         return {
@@ -77,7 +89,34 @@ class Message(db.Model):
             'role': self.role,
             'content': self.content,
             'timestamp': self.timestamp.isoformat(),
+            'extra_data': self.extra_data,
         }
 
     def __repr__(self):
         return f'<Message {self.id} chat={self.chat_id} role={self.role}>'
+
+
+class Report(db.Model):
+    __tablename__ = 'reports'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    title = db.Column(db.String(255), nullable=False)
+    query = db.Column(db.Text, nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    files = db.Column(db.String(1000), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'title': self.title,
+            'query': self.query,
+            'content': self.content,
+            'files': json.loads(self.files) if self.files else [],
+            'createdAt': self.created_at.isoformat(),
+        }
+
+    def __repr__(self):
+        return f'<Report {self.id} user={self.user_id}>'

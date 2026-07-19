@@ -13,7 +13,7 @@ import operator
 
 from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
-from langchain_ollama import ChatOllama
+from langchain_community.chat_models import ChatLiteLLM
 from langchain_core.output_parsers import StrOutputParser
 
 from langgraph.graph import StateGraph, END
@@ -25,7 +25,6 @@ import chromadb
 # Config
 # ──────────────────────────────────────────────────────────────
 
-OLLAMA_HOST  = os.getenv("OLLAMA_HOST",  "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gpt-oss:120b-cloud")
 CHROMA_DIR   = os.getenv("CHROMA_DIR",   "chroma_db")
 
@@ -81,13 +80,14 @@ class ReportState(TypedDict):
 # Lazy singletons
 # ──────────────────────────────────────────────────────────────
 
-_llm: ChatOllama | None = None
+_llm: ChatLiteLLM | None = None
 _chroma_client: chromadb.PersistentClient | None = None
 
-def _get_llm() -> ChatOllama:
+def _get_llm() -> ChatLiteLLM:
     global _llm
     if _llm is None:
-        _llm = ChatOllama(model=OLLAMA_MODEL, base_url=OLLAMA_HOST, temperature=0.1)
+        model_name = os.getenv("LLM_MODEL", OLLAMA_MODEL if "/" in OLLAMA_MODEL else f"ollama/{OLLAMA_MODEL}")
+        _llm = ChatLiteLLM(model=model_name, temperature=0.1)
     return _llm
 
 def _get_chroma_client() -> chromadb.PersistentClient:

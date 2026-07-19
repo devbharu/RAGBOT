@@ -5,7 +5,7 @@
 
 /* eslint-disable react-refresh/only-export-components */
 
-import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import axios from "axios";
 
 export const API = "http://127.0.0.1:8080";
@@ -25,6 +25,43 @@ export function AuthProvider({ children }) {
     const [token, setToken] = useState(null); // Start null - validated on mount
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+
+    const pendingPrefsUpdate = useRef({});
+    const prefsTimeout = useRef(null);
+
+    const syncPreferences = useCallback((updates) => {
+        // Update local state immediately
+        setUser(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                preferences: {
+                    ...(prev.preferences || {}),
+                    ...updates
+                }
+            };
+        });
+
+        // Queue for backend sync
+        pendingPrefsUpdate.current = { ...pendingPrefsUpdate.current, ...updates };
+        
+        if (prefsTimeout.current) clearTimeout(prefsTimeout.current);
+        
+        prefsTimeout.current = setTimeout(async () => {
+            const payload = { ...pendingPrefsUpdate.current };
+            pendingPrefsUpdate.current = {}; // reset queue
+            try {
+                const currentToken = axios.defaults.headers.common["Authorization"]?.replace("Bearer ", "") || localStorage.getItem("access_token");
+                if (currentToken) {
+                    await axios.put(`${API}/auth/preferences`, payload, {
+                        headers: { Authorization: `Bearer ${currentToken}` }
+                    });
+                }
+            } catch (err) {
+                console.error("[AUTH] Failed to sync preferences", err);
+            }
+        }, 1500); // 1.5s debounce
+    }, []);
 
     // Check if user is already logged in (using stored token) — RUN FIRST
     useEffect(() => {
@@ -47,14 +84,15 @@ export function AuthProvider({ children }) {
                     headers: { Authorization: `Bearer ${storedToken}` },
                 });
                 console.log("[AUTH] ✓ Token is valid, user:", res.data.user.username);
+                axios.defaults.headers.common["Authorization"] = `Bearer ${storedToken}`;
                 setToken(storedToken);
                 setUser(res.data.user);
             } catch (err) {
                 console.warn("[AUTH] ✗ Token validation failed:", err.response?.status, err.response?.data?.error);
                 console.error("[AUTH] Full error:", err.response?.data);
-                // Clear invalid tokens
-                localStorage.removeItem("access_token");
-                localStorage.removeItem("refresh_token");
+                // Clear invalid tokens and stale cache
+                localStorage.clear();
+                sessionStorage.clear();
                 setToken(null);
                 setUser(null);
             } finally {
@@ -70,8 +108,8 @@ export function AuthProvider({ children }) {
             (response) => response,
             async (error) => {
                 const config = error.config;
-                // If 401 and haven't already retried
-                if (error.response?.status === 401 && !config?._retry) {
+                // If 401, not a retry, and NOT a refresh request itself
+                if (error.response?.status === 401 && !config?._retry && !config?.url?.includes("/auth/refresh")) {
                     config._retry = true;
                     console.log("[AUTH] Got 401, attempting token refresh...");
                     
@@ -95,8 +133,8 @@ export function AuthProvider({ children }) {
                         // Refresh failed, logout
                         setUser(null);
                         setToken(null);
-                        localStorage.removeItem("access_token");
-                        localStorage.removeItem("refresh_token");
+                        localStorage.clear();
+                        sessionStorage.clear();
                         delete axios.defaults.headers.common["Authorization"];
                     }
                 }
@@ -128,6 +166,7 @@ export function AuthProvider({ children }) {
                 password,
             });
             const { user, access_token, refresh_token } = res.data;
+            axios.defaults.headers.common["Authorization"] = `Bearer ${access_token}`;
             setUser(user);
             setToken(access_token);
             localStorage.setItem("access_token", access_token);
@@ -150,6 +189,7 @@ export function AuthProvider({ children }) {
                 password,
             });
             const { user, access_token, refresh_token } = res.data;
+            axios.defaults.headers.common["Authorization"] = `Bearer ${access_token}`;
             setUser(user);
             setToken(access_token);
             localStorage.setItem("access_token", access_token);
@@ -173,8 +213,8 @@ export function AuthProvider({ children }) {
             console.log("[AUTH] Clearing local session");
             setUser(null);
             setToken(null);
-            localStorage.removeItem("access_token");
-            localStorage.removeItem("refresh_token");
+            localStorage.clear();
+            sessionStorage.clear();
             delete axios.defaults.headers.common["Authorization"];
         }
     }, []);
@@ -218,6 +258,7 @@ export function AuthProvider({ children }) {
         login,
         logout,
         refreshToken,
+        syncPreferences,
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

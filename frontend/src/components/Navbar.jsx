@@ -7,25 +7,22 @@ import { MessageSquare } from 'lucide-react';
 
 export default function Navbar() {
     return (
-        <header className="bg-[#1a1a1a] border-b border-[#2a2a2a] sticky top-0 z-20 backdrop-blur-sm">
+        <header className="sticky top-0 z-20 backdrop-blur-sm border-b border-[var(--border)] bg-[var(--bg-panel)]">
             <div className="h-14 px-4 flex items-center justify-between">
-                {/* Left - Logo (Hidden on mobile when sidebar is open) */}
                 <div className="hidden md:flex items-center gap-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-[#FF8081] to-[#ff6b6c] rounded-lg flex items-center justify-center">
-                        <MessageSquare size={18} className="text-white" />
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
+                        <MessageSquare size={18} />
                     </div>
-                    <h1 className="text-lg font-bold bg-gradient-to-r from-[#FF8081] to-[#ffb3b4] bg-clip-text text-transparent">
+                    <h1 className="text-lg font-bold text-[var(--accent)]" style={{ fontFamily: "'Fraunces', serif" }}>
                         CMTI Bot
                     </h1>
                 </div>
 
-                {/* Center - Page Title (Optional) */}
                 <div className="flex-1 text-center md:hidden">
-                    <h1 className="text-sm font-semibold text-white">CMTI Bot</h1>
+                    <h1 className="text-sm font-semibold text-[var(--text-primary)]">CMTI Bot</h1>
                 </div>
 
-                {/* Right - Empty for now (can add theme toggle, settings) */}
-                <div className="w-8"></div>
+                <div className="w-8" />
             </div>
         </header>
     );

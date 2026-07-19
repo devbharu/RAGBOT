@@ -89,17 +89,17 @@ export default function Signup() {
                     
                     {/* Error Message */}
                     {error && (
-                        <div className="flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-                            <AlertCircle size={18} className="text-red-500 flex-shrink-0" />
-                            <p className="text-sm text-red-600 font-mono">{error}</p>
+                        <div className="flex items-center gap-3 p-4 rounded-lg" style={{ background: "var(--red-dim)", border: "1px solid var(--red-border)" }}>
+                            <AlertCircle size={18} className="flex-shrink-0" style={{ color: "var(--red-soft)" }} />
+                            <p className="text-sm font-mono" style={{ color: "var(--red-soft)" }}>{error}</p>
                         </div>
                     )}
 
                     {/* Success Message */}
                     {success && (
-                        <div className="flex items-center gap-3 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                            <CheckCircle size={18} className="text-green-500 flex-shrink-0" />
-                            <p className="text-sm text-green-600 font-mono">{success}</p>
+                        <div className="flex items-center gap-3 p-4 rounded-lg" style={{ background: "var(--green-dim)", border: "1px solid var(--green-border)" }}>
+                            <CheckCircle size={18} className="flex-shrink-0" style={{ color: "var(--green-vivid)" }} />
+                            <p className="text-sm font-mono" style={{ color: "var(--green-vivid)" }}>{success}</p>
                         </div>
                     )}
 
@@ -179,7 +179,7 @@ export default function Signup() {
                     <button
                         type="submit"
                         disabled={loading}
-                        className="w-full py-2.5 bg-[var(--accent)] text-white rounded-lg font-semibold text-sm transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-6"
+                        className="w-full py-2.5 bg-[var(--accent)] text-[var(--on-accent)] rounded-lg font-semibold text-sm transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-6"
                     >
                         {loading ? (
                             <>
